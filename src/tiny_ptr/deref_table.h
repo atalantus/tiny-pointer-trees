@@ -1,14 +1,41 @@
 #pragma once
 
 #include <cassert>
-
 #include <array>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
 #include "tiny_ptr/sequence_lock.h"
 #include "tiny_ptr/tiny_ptr.h"
+
+#include "util/primes.hpp"
+
+// TODO: These values could be a little more conservative
+//  Do some experimental testing.
+consteval double load_factor(size_t bin_size) {
+  if (bin_size >= (1 << 8) - 1) {
+    return 1.0;
+  }
+  if (bin_size >= (1 << 7) - 1) {
+    return 0.95;
+  }
+  if (bin_size >= (1 << 6) - 1) {
+    return 0.90;
+  }
+  if (bin_size >= (1 << 5) - 1) {
+    return 0.82;
+  }
+  if (bin_size >= (1 << 4) - 1) {
+    return 0.70;
+  }
+  if (bin_size >= (1 << 3) - 1) {
+    return 0.45;
+  }
+
+  throw "bin size is too small";
+}
 
 /**
  * @class DerefTable
@@ -17,24 +44,30 @@
  *
  * @tparam TObject The type of objects stored within the dereference table.
  */
-template <typename TObject, std::unsigned_integral TTinyPtrT = uint8_t, unsigned STinyPtr = 0>
+template <typename TObject, std::unsigned_integral TTinyPtrT = uint8_t, unsigned
+          STinyPtr = 0>
 class DerefTable {
-  static_assert(sizeof(TObject) >= 1, "DerefTable requires T to be at least 1 byte in size to store free slot index");
+  static_assert(sizeof(TObject) >= 1,
+                "DerefTable requires T to be at least 1 byte in size to store free slot index")
+  ;
 
   // TODO: Technically if we have a large STinyPtr value the maximum needed type here might be smaller than
   //  TTinyPtrValue
   using BucketIndexT = TTinyPtrT;
 
- public:
+public:
   using TinyPtrT = TinyPtr<TTinyPtrT, STinyPtr>;
 
   static constexpr size_t ENTRIES_PER_BIN_COUNT =
-    (1 << (sizeof(TTinyPtrT) * 8 - STinyPtr - 1)) - 1;  // (minus 1 to preserve null and tagged tinyptr)
+      (1 << (sizeof(TTinyPtrT) * 8 - STinyPtr - 1)) - 1;
+  // (minus 1 to preserve null and tagged tinyptr)
 
   // If newly "allocated" memory should be zeroed before it is returned.
   static constexpr bool ZERO_NEW_ALLOCATED_MEMORY = true;
 
- private:
+private:
+  // The prime number used for the hash table. See: https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
+  primes::Prime _ht_prime;
   // The current size of the dereference table e.g., how many objects of type T are currently stored.
   std::atomic<uint32_t> _size;
   // The number of buckets of this dereference table. This is always a power of two for fast bucket indexing
@@ -42,9 +75,6 @@ class DerefTable {
   uint32_t _num_buckets;
   // The max capacity of the dereference table e.g., how many objects of type T can be stored at most.
   uint32_t _capacity;
-
-  // The hash-table mask used for bucket indexing.
-  uint32_t _ht_mask;
 
   struct MetaTableEntry {
     std::atomic<BucketIndexT> free_slot_count = 0;
@@ -57,12 +87,15 @@ class DerefTable {
   struct DataTableEntry {
     std::array<TObject, ENTRIES_PER_BIN_COUNT> entries;
 
-    [[nodiscard]] BucketIndexT get_next_free_slot_index(size_t entry_index) const {
-      return *reinterpret_cast<const BucketIndexT *>(&entries[entry_index]);
+    [[nodiscard]] BucketIndexT get_next_free_slot_index(
+        size_t entry_index) const {
+      return *reinterpret_cast<const BucketIndexT*>(&entries[entry_index]);
     }
 
-    void set_next_free_slot_index(size_t entry_index, const BucketIndexT next_free_entry_index) {
-      *reinterpret_cast<BucketIndexT *>(&entries[entry_index]) = next_free_entry_index;
+    void set_next_free_slot_index(size_t entry_index,
+                                  const BucketIndexT next_free_entry_index) {
+      *reinterpret_cast<BucketIndexT*>(&entries[entry_index]) =
+          next_free_entry_index;
     }
   };
 
@@ -72,47 +105,51 @@ class DerefTable {
   // object of type T or uses the first byte of its memory to store its node in the linked-free-list.
   std::vector<DataTableEntry> data_table;
 
- public:
-  DerefTable() : _size(0), _num_buckets(0), _capacity(0), _ht_mask(0) {}
+public:
+  DerefTable() : _size(0), _num_buckets(0), _capacity(0) {
+  }
 
   explicit DerefTable(uint32_t ht_bucket_count);
 
-  DerefTable(const DerefTable &)            = delete;
-  DerefTable &operator=(const DerefTable &) = delete;
+  DerefTable(const DerefTable&) = delete;
 
-  DerefTable(DerefTable &&other) noexcept
-      : _size(other._size.load(std::memory_order::relaxed)),
-        _num_buckets(other._num_buckets),
-        _capacity(other._capacity),
-        _ht_mask(other._ht_mask),
-        meta_table(std::move(other.meta_table)),
-        data_table(std::move(other.data_table)) {
+  DerefTable& operator=(const DerefTable&) = delete;
+
+  DerefTable(DerefTable&& other) noexcept
+    : _ht_prime(other._ht_prime),
+      _size(other._size.load(std::memory_order::relaxed)),
+      _num_buckets(other._num_buckets),
+      _capacity(other._capacity),
+      meta_table(std::move(other.meta_table)),
+      data_table(std::move(other.data_table)) {
     other._size.store(0, std::memory_order::relaxed);
     other._num_buckets = 0;
-    other._capacity    = 0;
-    other._ht_mask     = 0;
+    other._capacity = 0;
   }
 
-  DerefTable &operator=(DerefTable &&other) noexcept {
+  DerefTable& operator=(DerefTable&& other) noexcept {
     if (this != &other) {
-      _size.store(other._size.load(std::memory_order::relaxed), std::memory_order::relaxed);
+      _size.store(other._size.load(std::memory_order::relaxed),
+                  std::memory_order::relaxed);
+      std::construct_at(&_ht_prime, other._ht_prime);
       _num_buckets = other._num_buckets;
-      _capacity    = other._capacity;
-      _ht_mask     = other._ht_mask;
-      meta_table   = std::move(other.meta_table);
-      data_table   = std::move(other.data_table);
+      _capacity = other._capacity;
+      meta_table = std::move(other.meta_table);
+      data_table = std::move(other.data_table);
 
       other._size.store(0, std::memory_order::relaxed);
       other._num_buckets = 0;
-      other._capacity    = 0;
-      other._ht_mask     = 0;
+      other._capacity = 0;
     }
     return *this;
   }
 
-  static DerefTable Create(size_t expected_number_of_elements);
 
-  [[nodiscard]] uint32_t size() const { return _size.load(std::memory_order::relaxed); }
+  static DerefTable Create(size_t max_capacity);
+
+  [[nodiscard]] uint32_t size() const {
+    return _size.load(std::memory_order::relaxed);
+  }
 
   [[nodiscard]] uint32_t capacity() const { return _capacity; }
 
@@ -128,7 +165,8 @@ class DerefTable {
    * @param special An optional special value to be stored in the tinyptr_t (e.g., for pointer tagging).
    * @return A pair of a tinyptr_t and a pointer to the newly allocated object.
    */
-  std::pair<TinyPtrT, TObject *> allocate(uint64_t h1, uint64_t h2, TTinyPtrT special = 0);
+  std::pair<TinyPtrT, TObject*> allocate(uint64_t h1, uint64_t h2,
+                                         TTinyPtrT special = 0);
 
   /**
    * "Frees" the object pointed to by the given tinyptr_t and the hash values.
@@ -152,7 +190,7 @@ class DerefTable {
    * @param h2 The hash value of the second hash function associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
-  TObject *dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2);
+  TObject* dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2);
 
   /**
    * "Dereferences" a given tiny pointer and returns a pointer to the object that it points to.
@@ -161,121 +199,139 @@ class DerefTable {
    * @param h2 The hash value of the second hash function associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
-  const TObject *dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2) const;
+  const TObject* dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2) const;
 
- private:
-  TObject *get_data_object(size_t data_table_index, size_t object_index);
+private:
+  TObject* get_data_object(size_t data_table_index, size_t object_index);
 
-  const TObject *get_data_object(size_t data_table_index, size_t object_index) const;
+  const TObject* get_data_object(size_t data_table_index,
+                                 size_t object_index) const;
 };
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-DerefTable<TObject, TTinyPtr, STinyPtr>::DerefTable(uint32_t ht_bucket_count)
-    : _size{0},
-      // round capacity up to the next power of two
-      _num_buckets([&] {
-        uint32_t n = ht_bucket_count;
-        n--;
-        n |= n >> 1;
-        n |= n >> 2;
-        n |= n >> 4;
-        n |= n >> 8;
-        n |= n >> 16;
-        n++;
-        return n;
-      }()),
-      _capacity(_num_buckets * ENTRIES_PER_BIN_COUNT),
-      _ht_mask(_num_buckets - 1),
-      meta_table(_num_buckets),
-      data_table(_num_buckets) {
-  for (auto &meta_data : meta_table) { meta_data.free_slot_count = ENTRIES_PER_BIN_COUNT; }
+DerefTable<TObject, TTinyPtr, STinyPtr>::DerefTable(
+    const uint32_t ht_bucket_count)
+  : _ht_prime{primes::Prime::pick(ht_bucket_count)},
+    _size{0},
+    _num_buckets(_ht_prime.get()),
+    _capacity(_num_buckets * ENTRIES_PER_BIN_COUNT),
+    meta_table(_num_buckets),
+    data_table(_num_buckets) {
+  for (auto& meta_data : meta_table) {
+    meta_data.free_slot_count = ENTRIES_PER_BIN_COUNT;
+  }
 
-  for (auto &data_entry : data_table) {
-    for (int i = 0; i < data_entry.entries.size() - 1; ++i) { data_entry.set_next_free_slot_index(i, i + 1); }
+  for (auto& data_entry : data_table) {
+    for (int i = 0; i < data_entry.entries.size() - 1; ++i) {
+      data_entry.set_next_free_slot_index(i, i + 1);
+    }
     data_entry.set_next_free_slot_index(data_entry.entries.size() - 1, 0);
   }
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-DerefTable<TObject, TTinyPtr, STinyPtr> DerefTable<TObject, TTinyPtr, STinyPtr>::Create(
-  const size_t expected_number_of_elements) {
-  auto expected_bucket_count =
-    static_cast<uint32_t>((expected_number_of_elements + ENTRIES_PER_BIN_COUNT - 1) / ENTRIES_PER_BIN_COUNT);
-  // we multiply expected number of elements by two (random heuristic value) to make sure we have enough buckets
-  expected_bucket_count *= 2;
-  return DerefTable(expected_bucket_count);
+DerefTable<TObject, TTinyPtr, STinyPtr> DerefTable<
+  TObject, TTinyPtr, STinyPtr>::Create(
+    const size_t max_capacity) {
+  const auto min_bucket_count =
+      static_cast<uint32_t>((max_capacity + ENTRIES_PER_BIN_COUNT - 1) /
+                            ENTRIES_PER_BIN_COUNT);
+  // divide the minimum bucket count by the expected load factor estimate
+  return DerefTable(
+      static_cast<uint32_t>(static_cast<double>(min_bucket_count) / load_factor(
+                                ENTRIES_PER_BIN_COUNT)));
 }
 
 inline void throw_fill_factor_exception(uint32_t size, uint32_t capacity) {
-  const auto fill_factor = static_cast<float>(size) / static_cast<float>(capacity);
-  throw std::runtime_error("Unable to allocate new object at fill factor " + std::to_string(fill_factor) +
-                           ". Size: " + std::to_string(size) + ", Capacity: " + std::to_string(capacity));
+  const auto fill_factor = static_cast<float>(size) / static_cast<float>(
+                             capacity);
+  throw std::runtime_error(
+      "Unable to allocate new object at fill factor " + std::to_string(
+          fill_factor) +
+      ". Size: " + std::to_string(size) + ", Capacity: " + std::to_string(
+          capacity));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject *>
-DerefTable<TObject, TTinyPtr, STinyPtr>::allocate(const uint64_t h1, const uint64_t h2, const TTinyPtr special) {
+std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
+DerefTable<TObject, TTinyPtr, STinyPtr>::allocate(
+    const uint64_t h1, const uint64_t h2, const TTinyPtr special) {
   if (_size.load(std::memory_order::relaxed) >= _capacity) {
-    throw_fill_factor_exception(_size.load(std::memory_order::relaxed), _capacity);
+    throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
+                                _capacity);
   }
 
-  auto h1_index = h1 & _ht_mask;
-  auto h2_index = h2 & _ht_mask;
+  auto h1_index = _ht_prime.mod(h1);
+  auto h2_index = _ht_prime.mod(h2);
 
-  auto &h1_meta_data = meta_table[h1_index];
-  auto &h2_meta_data = meta_table[h2_index];
+  auto& h1_meta_data = meta_table[h1_index];
+  auto& h2_meta_data = meta_table[h2_index];
 
   ExclusiveLock<uint8_t> h_excl_lock;
 
 retry: {
-  auto h1_opt_lock = h1_meta_data.lock.lock_optimistically();
-  auto h2_opt_lock = h2_meta_data.lock.lock_optimistically();
+    auto h1_opt_lock = h1_meta_data.lock.lock_optimistically();
+    auto h2_opt_lock = h2_meta_data.lock.lock_optimistically();
 
-  const TTinyPtr h1_free_count = h1_meta_data.free_slot_count.load(std::memory_order::relaxed);
-  const TTinyPtr h2_free_count = h2_meta_data.free_slot_count.load(std::memory_order::relaxed);
+    const TTinyPtr h1_free_count = h1_meta_data.free_slot_count.load(
+        std::memory_order::relaxed);
+    const TTinyPtr h2_free_count = h2_meta_data.free_slot_count.load(
+        std::memory_order::relaxed);
 
-  uint8_t h_bit              = h1_free_count >= h2_free_count ? 0 : 1;
-  auto h_index               = h_bit ? h2_index : h1_index;
-  auto &h_meta_data          = h_bit ? h2_meta_data : h1_meta_data;
-  auto &h_meta_data_lock     = h_bit ? h2_opt_lock : h1_opt_lock;
-  auto &other_meta_data_lock = h_bit ? h1_opt_lock : h2_opt_lock;
+    uint8_t h_bit = h1_free_count >= h2_free_count ? 0 : 1;
+    auto h_index = h_bit ? h2_index : h1_index;
+    auto& h_meta_data = h_bit ? h2_meta_data : h1_meta_data;
+    auto& h_meta_data_lock = h_bit ? h2_opt_lock : h1_opt_lock;
+    auto& other_meta_data_lock = h_bit ? h1_opt_lock : h2_opt_lock;
 
-  const TTinyPtr object_index         = h_meta_data.free_slot_index.load(std::memory_order::relaxed);
-  auto &object_entry                  = *get_data_object(h_index, object_index);
-  const TTinyPtr next_free_slot_index = data_table[h_index].get_next_free_slot_index(object_index);
+    const TTinyPtr object_index = h_meta_data.free_slot_index.load(
+        std::memory_order::relaxed);
+    auto& object_entry = *get_data_object(h_index, object_index);
+    const TTinyPtr next_free_slot_index = data_table[h_index].
+        get_next_free_slot_index(object_index);
 
-  // Note: for the case where h1 = h2 we have to make sure we validate the optimistic lock before upgrading
-  if (!other_meta_data_lock.validate() || !h_meta_data_lock.try_upgrade_to_exclusive(h_excl_lock)) { goto retry; }
+    // Note: for the case where h1 = h2 we have to make sure we validate the optimistic lock before upgrading
+    if (!other_meta_data_lock.validate() || !h_meta_data_lock.
+        try_upgrade_to_exclusive(h_excl_lock)) { goto retry; }
 
-  if (h_meta_data.free_slot_count == 0) {
-    throw_fill_factor_exception(_size.load(std::memory_order::relaxed), _capacity);
+    if (h_meta_data.free_slot_count == 0) {
+      throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
+                                  _capacity);
+    }
+    assert(
+        object_index < ENTRIES_PER_BIN_COUNT &&
+        "used free_slot_index out of bounds");
+
+    h_meta_data.free_slot_count.fetch_sub(1, std::memory_order::relaxed);
+    h_meta_data.free_slot_index.store(next_free_slot_index,
+                                      std::memory_order::relaxed);
+
+    h_excl_lock.unlock();
+
+    _size.fetch_add(1, std::memory_order::relaxed);
+
+    if constexpr (ZERO_NEW_ALLOCATED_MEMORY) {
+      memset(&object_entry, 0, sizeof(TObject));
+    }
+
+    return {TinyPtrT(object_index, special, h_bit), &object_entry};
   }
-  assert(object_index < ENTRIES_PER_BIN_COUNT && "used free_slot_index out of bounds");
-
-  h_meta_data.free_slot_count.fetch_sub(1, std::memory_order::relaxed);
-  h_meta_data.free_slot_index.store(next_free_slot_index, std::memory_order::relaxed);
-
-  h_excl_lock.unlock();
-
-  _size.fetch_add(1, std::memory_order::relaxed);
-
-  if constexpr (ZERO_NEW_ALLOCATED_MEMORY) { memset(&object_entry, 0, sizeof(TObject)); }
-
-  return {TinyPtrT(object_index, special, h_bit), &object_entry};
-}
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-void DerefTable<TObject, TTinyPtr, STinyPtr>::free(const TinyPtrT tinyptr, const uint64_t h1, const uint64_t h2) {
+void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
+    const TinyPtrT tinyptr, const uint64_t h1, const uint64_t h2) {
   const uint64_t h = tinyptr.hash_fn() ? h2 : h1;
-  TTinyPtr index   = tinyptr.index();
+  TTinyPtr index = tinyptr.index();
+  const auto h_index = _ht_prime.mod(h);
 
-  auto &h_meta_data = meta_table[h & _ht_mask];
+  auto& h_meta_data = meta_table[h_index];
 
   auto excl_lock = h_meta_data.lock.lock_exclusive();
 
-  data_table[h & _ht_mask].set_next_free_slot_index(index,
-                                                    h_meta_data.free_slot_index.load(std::memory_order::relaxed));
+  data_table[h_index].set_next_free_slot_index(index,
+                                               h_meta_data.free_slot_index.load(
+                                                   std::memory_order::relaxed));
   h_meta_data.free_slot_index.store(index, std::memory_order::relaxed);
   h_meta_data.free_slot_count.fetch_add(1, std::memory_order::relaxed);
 
@@ -285,32 +341,40 @@ void DerefTable<TObject, TTinyPtr, STinyPtr>::free(const TinyPtrT tinyptr, const
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-TObject *DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(const TinyPtrT tinyptr, const uint64_t h1,
-                                                              const uint64_t h2) {
-  return const_cast<TObject *>(static_cast<const DerefTable *>(this)->dereference(tinyptr, h1, h2));
+TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
+    const TinyPtrT tinyptr, const uint64_t h1,
+    const uint64_t h2) {
+  return const_cast<TObject*>(static_cast<const DerefTable*>(this)->dereference(
+      tinyptr, h1, h2));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-const TObject *DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(const TinyPtrT tinyptr, const uint64_t h1,
-                                                                    const uint64_t h2) const {
+const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
+    const TinyPtrT tinyptr, const uint64_t h1,
+    const uint64_t h2) const {
   if (tinyptr == TinyPtrT::null) { return nullptr; }
-  if (tinyptr == TinyPtrT::tagged) { throw std::runtime_error("Cannot dereference tagged tinyptr"); }
+  if (tinyptr == TinyPtrT::tagged) {
+    throw std::runtime_error("Cannot dereference tagged tinyptr");
+  }
 
-  const uint64_t h     = tinyptr.hash_fn() ? h2 : h1;
+  const uint64_t h = tinyptr.hash_fn() ? h2 : h1;
   const TTinyPtr index = tinyptr.index();
 
-  return get_data_object(h & _ht_mask, index);
+  return get_data_object(_ht_prime.mod(h), index);
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-TObject *DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(const size_t data_table_index,
-                                                                  const size_t object_index) {
-  return const_cast<TObject *>(static_cast<const DerefTable *>(this)->get_data_object(data_table_index, object_index));
+TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(
+    const size_t data_table_index,
+    const size_t object_index) {
+  return const_cast<TObject*>(static_cast<const DerefTable*>(this)->
+    get_data_object(data_table_index, object_index));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
-const TObject *DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(size_t data_table_index,
-                                                                        size_t object_index) const {
+const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(
+    size_t data_table_index,
+    size_t object_index) const {
   // convert TinyPtr to object pointer without any memory lookups!
   return &data_table[data_table_index].entries[object_index];
   // return reinterpret_cast<ObjectEntry *>(&data_table[data_table_index]) + object_index;

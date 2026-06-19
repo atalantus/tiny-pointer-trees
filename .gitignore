@@ -71,3 +71,7 @@ Testing/
 # CLion
 .idea/
 cmake-build-*/
+
+# CLion
+.idea/
+cmake-build-*/

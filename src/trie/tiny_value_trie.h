@@ -9,7 +9,6 @@
 #include "trie/trie_util.h"
 
 // TODO:
-//  - This Trie currently also stores the terminating null character of C-style strings
 //  - Delete empty nodes
 /**
  * @class TinyValueTrie
@@ -19,9 +18,9 @@
  */
 template <typename T>
 class TinyValueTrie {
- private:
+private:
   class Node {
-   public:
+  public:
     T value;
     bool is_terminal = false;
     std::array<TinyPtr<>, 256> nodes;
@@ -29,13 +28,13 @@ class TinyValueTrie {
 
   using TinyPtrT = DerefTable<Node>::TinyPtrT;
 
-  std::pair<TinyPtrT, Node *> root;
+  std::pair<TinyPtrT, Node*> root;
 
   size_t count;
 
   mutable DerefTable<Node> deref_table{};
 
- public:
+public:
   explicit TinyValueTrie(size_t expected_number_of_nodes);
 
   size_t size() const { return count; }
@@ -48,28 +47,28 @@ class TinyValueTrie {
 
   std::optional<T> get(std::string_view word) const;
 
- private:
-  Node *create_node(std::string_view word);
+private:
+  Node* create_node(std::string_view word);
 
-  std::optional<Node *> get_node(std::string_view word);
+  std::optional<Node*> get_node(std::string_view word);
 
-  std::optional<const Node *> get_node(std::string_view word) const;
+  std::optional<const Node*> get_node(std::string_view word) const;
 };
 
 template <typename T>
 TinyValueTrie<T>::TinyValueTrie(const size_t expected_number_of_nodes)
-    : deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
+  : deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
   count = 0;
-  root  = deref_table.allocate(0, 0);
+  root = deref_table.allocate(0, 0);
 }
 
 template <typename T>
 bool TinyValueTrie<T>::set(const std::string_view word, T value) {
-  Node *node = this->create_node(word);
+  Node* node = this->create_node(word);
 
-  node->value         = value;
+  node->value = value;
   const bool new_word = !node->is_terminal;
-  node->is_terminal   = true;
+  node->is_terminal = true;
   count += new_word;
   return new_word;
 }
@@ -103,8 +102,9 @@ std::optional<T> TinyValueTrie<T>::get(const std::string_view word) const {
 }
 
 template <typename T>
-TinyValueTrie<T>::Node *TinyValueTrie<T>::create_node(const std::string_view word) {
-  Node *cur_node = root.second;
+TinyValueTrie<T>::Node* TinyValueTrie<T>::create_node(
+    const std::string_view word) {
+  Node* cur_node = root.second;
 
   uint64_t h1 = 5381;
   uint64_t h2 = 0;
@@ -114,9 +114,9 @@ TinyValueTrie<T>::Node *TinyValueTrie<T>::create_node(const std::string_view wor
     h2 = sdbm_hash(c, h2);
 
     if (cur_node->nodes[c] == TinyPtrT::null) {
-      auto [ptr, node]   = this->deref_table.allocate(h1, h2);
+      auto [ptr, node] = this->deref_table.allocate(h1, h2);
       cur_node->nodes[c] = ptr;
-      cur_node           = node;
+      cur_node = node;
     } else {
       cur_node = this->deref_table.dereference(cur_node->nodes[c], h1, h2);
     }
@@ -126,19 +126,21 @@ TinyValueTrie<T>::Node *TinyValueTrie<T>::create_node(const std::string_view wor
 }
 
 template <typename T>
-std::optional<typename TinyValueTrie<T>::Node *> TinyValueTrie<T>::get_node(std::string_view word) {
-  auto node = static_cast<const TinyValueTrie *>(this)->get_node(word);
+std::optional<typename TinyValueTrie<T>::Node*> TinyValueTrie<T>::get_node(
+    std::string_view word) {
+  auto node = static_cast<const TinyValueTrie*>(this)->get_node(word);
 
   if (node.has_value()) {
-    return const_cast<Node *>(node.value());
+    return const_cast<Node*>(node.value());
   }
 
   return {};
 }
 
 template <typename T>
-std::optional<const typename TinyValueTrie<T>::Node *> TinyValueTrie<T>::get_node(const std::string_view word) const {
-  const Node *cur_node = root.second;
+std::optional<const typename TinyValueTrie<T>::Node*> TinyValueTrie<
+  T>::get_node(const std::string_view word) const {
+  const Node* cur_node = root.second;
 
   uint64_t h1 = 5381;
   uint64_t h2 = 0;

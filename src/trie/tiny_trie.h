@@ -22,16 +22,16 @@
  * in the parent.
  */
 class TinyTrie {
- private:
+private:
   class Node {
-   public:
+  public:
     bool is_terminal = false;
     std::array<TinyPtr<>, 256> nodes;
   };
 
   using TinyPtrT = DerefTable<Node>::TinyPtrT;
 
-  std::pair<TinyPtrT, Node *> root;
+  std::pair<TinyPtrT, Node*> root;
 
   size_t count;
 
@@ -40,18 +40,20 @@ class TinyTrie {
   explicit TinyTrie(size_t expected_number_of_nodes);
 
   template <typename StringT = std::string_view>
-  explicit TinyTrie(const std::vector<StringT> &sorted_words);
+  explicit TinyTrie(const std::vector<StringT>& sorted_words);
 
- public:
-  static TinyTrie Create(const size_t expected_number_of_nodes) { return TinyTrie(expected_number_of_nodes); }
+public:
+  static TinyTrie Create(const size_t expected_number_of_nodes) {
+    return TinyTrie(expected_number_of_nodes);
+  }
 
   template <typename StringT = std::string_view>
-  static TinyTrie BulkCreate(const std::vector<StringT> &sorted_words) {
+  static TinyTrie BulkCreate(const std::vector<StringT>& sorted_words) {
     return TinyTrie(sorted_words);
   }
 
   template <typename StringT = std::string_view>
-  static TinyTrie BulkCreateUnsorted(std::vector<StringT> &words) {
+  static TinyTrie BulkCreateUnsorted(std::vector<StringT>& words) {
     std::ranges::sort(words);
     return TinyTrie(words);
   }
@@ -66,25 +68,28 @@ class TinyTrie {
 
   bool contains(std::string_view word) const;
 
- private:
-  std::pair<Node *, std::pair<uint64_t, uint64_t>> create_parent_node(std::string_view word) const;
+private:
+  std::pair<Node*, std::pair<uint64_t, uint64_t> > create_parent_node(
+      std::string_view word) const;
 
-  std::pair<Node *, std::pair<uint64_t, uint64_t>> get_parent_node(std::string_view word) const;
+  std::pair<Node*, std::pair<uint64_t, uint64_t> > get_parent_node(
+      std::string_view word) const;
 };
 
 inline TinyTrie::TinyTrie(const size_t expected_number_of_nodes)
-    : count(0), deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
+  : count(0), deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
   root = deref_table.allocate(0, 0);
 }
 
 template <typename StringT>
-TinyTrie::TinyTrie(const std::vector<StringT> &sorted_words) : count(0) {
+TinyTrie::TinyTrie(const std::vector<StringT>& sorted_words) : count(0) {
   assert(std::ranges::is_sorted(sorted_words) &&
-         "use Trie::BulkCreateUnsorted if your words are not already sorted alphabetically. Note that sorting "
-         "is case-sensitive.");
-  auto node_counts            = compute_node_counts(sorted_words);
-  const size_t node_count_sum = std::reduce(node_counts.begin(), node_counts.end());
-  deref_table                 = DerefTable<Node>::Create(node_count_sum);
+      "use Trie::BulkCreateUnsorted if your words are not already sorted alphabetically. Note that sorting "
+      "is case-sensitive.");
+  auto node_counts = compute_node_counts(sorted_words);
+  const size_t node_count_sum = std::reduce(node_counts.begin(),
+                                            node_counts.end());
+  deref_table = DerefTable<Node>::Create(node_count_sum);
 
   root = deref_table.allocate(0, 0);
 
