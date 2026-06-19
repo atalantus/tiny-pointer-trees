@@ -7,9 +7,12 @@
 #include <algorithm>
 #include <numeric>
 
-TEST(TestTrie, TinyTrie) {
+#include "trie/tiny_trie_2.h"
+
+template <typename TTrie>
+void test_trie() {
   auto testWords = LoadTestWords();
-  auto trie      = TinyTrie::BulkCreateUnsorted<std::string>(testWords);
+  auto trie      = TTrie::template BulkCreateUnsorted<std::string>(testWords);
 
   std::cout << "Number of words: " << trie.size() << "\n";
   std::cout << "Trie node count: " << trie.node_count() << "\n";
@@ -27,6 +30,14 @@ TEST(TestTrie, TinyTrie) {
   }
 
   ASSERT_EQ(trie.size(), 0);
+}
+
+TEST(TestTrie, TinyTrie) {
+ test_trie<TinyTrie>();
+}
+
+TEST(TestTrie, TinyTrie2) {
+  test_trie<TinyTrie2>();
 }
 
 TEST(TestTrie, TinyValueTrie) {

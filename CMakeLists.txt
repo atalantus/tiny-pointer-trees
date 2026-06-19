@@ -17,6 +17,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(tiny_pointer_trees STATIC
         src/trie/tiny_trie.cpp
+        src/trie/tiny_trie_2.cpp
 )
 
 target_include_directories(tiny_pointer_trees PUBLIC

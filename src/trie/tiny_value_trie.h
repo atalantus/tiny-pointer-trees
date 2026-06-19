@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <memory>
 #include <optional>
 #include <string_view>
 
@@ -59,7 +58,7 @@ template <typename T>
 TinyValueTrie<T>::TinyValueTrie(const size_t expected_number_of_nodes)
   : deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
   count = 0;
-  root = deref_table.allocate(0, 0);
+  root = deref_table.allocate({0, 0});
 }
 
 template <typename T>
@@ -105,20 +104,17 @@ template <typename T>
 TinyValueTrie<T>::Node* TinyValueTrie<T>::create_node(
     const std::string_view word) {
   Node* cur_node = root.second;
-
-  uint64_t h1 = 5381;
-  uint64_t h2 = 0;
+  auto h = std::make_pair(djb2_hash_init, sdbm_hash_init);
 
   for (const auto c : word) {
-    h1 = djb2_hash(c, h1);
-    h2 = sdbm_hash(c, h2);
+    h = djb2_sdbm_hash(c, h);
 
     if (cur_node->nodes[c] == TinyPtrT::null) {
-      auto [ptr, node] = this->deref_table.allocate(h1, h2);
+      auto [ptr, node] = this->deref_table.allocate(h);
       cur_node->nodes[c] = ptr;
       cur_node = node;
     } else {
-      cur_node = this->deref_table.dereference(cur_node->nodes[c], h1, h2);
+      cur_node = this->deref_table.dereference(cur_node->nodes[c], h);
     }
   }
 
@@ -141,19 +137,16 @@ template <typename T>
 std::optional<const typename TinyValueTrie<T>::Node*> TinyValueTrie<
   T>::get_node(const std::string_view word) const {
   const Node* cur_node = root.second;
-
-  uint64_t h1 = 5381;
-  uint64_t h2 = 0;
+  auto h = std::make_pair(djb2_hash_init, sdbm_hash_init);
 
   for (const auto c : word) {
-    h1 = djb2_hash(c, h1);
-    h2 = sdbm_hash(c, h2);
+    h = djb2_sdbm_hash(c, h);
 
     if (cur_node->nodes[c] == TinyPtrT::null) {
       return {};
     }
 
-    cur_node = this->deref_table.dereference(cur_node->nodes[c], h1, h2);
+    cur_node = this->deref_table.dereference(cur_node->nodes[c], h);
   }
 
   return cur_node;

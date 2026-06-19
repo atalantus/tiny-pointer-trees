@@ -72,9 +72,9 @@ void TestDereferenceTable() {
     for (int i = 0; i < ENTRY_COUNT; ++i) {
         // assert values are linked free list
         auto val = i == ENTRY_COUNT - 1 ? 0 : i + 1;
-        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), 0, 0)), val);
-        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), 1, 1)), val);
-        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), 2, 2)), val);
+        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), {0, 0})), val);
+        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), {1, 1})), val);
+        ASSERT_EQ(*reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i, 0), {2, 2})), val);
     }
 
     std::vector<std::pair<TinyPtrT, uint32_t *> > bin1;
@@ -82,23 +82,23 @@ void TestDereferenceTable() {
     std::vector<std::pair<TinyPtrT, uint32_t *> > bin3;
 
     for (int i = 0; i < ENTRY_COUNT; ++i) {
-        bin1.push_back(deref_table.allocate(0, 0, SPECIAL_VALUE));
+        bin1.push_back(deref_table.allocate({0, 0}, SPECIAL_VALUE));
         ASSERT_EQ(deref_table.size(), i + 1);
     }
 
     // bin 1 is full and returns null tinyptr
-    EXPECT_THROW(deref_table.allocate(0, 0), std::runtime_error);
+    EXPECT_THROW(deref_table.allocate({0, 0}), std::runtime_error);
 
     for (int i = 0; i < ENTRY_COUNT; ++i) {
-        bin2.push_back(deref_table.allocate(0, 1, SPECIAL_VALUE));
-        bin3.push_back(deref_table.allocate(2, 0, SPECIAL_VALUE));
+        bin2.push_back(deref_table.allocate({0, 1}, SPECIAL_VALUE));
+        bin3.push_back(deref_table.allocate({2, 0}, SPECIAL_VALUE));
 
         ASSERT_EQ(deref_table.size(), ENTRY_COUNT + 2 * (i + 1));
     }
 
     // bin 2 and 3 are full and return null tinyptr
-    EXPECT_THROW(deref_table.allocate(1, 1), std::runtime_error);
-    EXPECT_THROW(deref_table.allocate(2, 2), std::runtime_error);
+    EXPECT_THROW(deref_table.allocate({1, 1}), std::runtime_error);
+    EXPECT_THROW(deref_table.allocate({2, 2}), std::runtime_error);
 
     ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT);
 
@@ -131,11 +131,11 @@ void TestDereferenceTable() {
     // update values through tinyptr
     for (int i = 0; i < ENTRY_COUNT; ++i) {
         switch (i % 3) {
-            case 0: *deref_table.dereference(bin1[i].first, 0, 2) = i;
+            case 0: *deref_table.dereference(bin1[i].first, {0, 2}) = i;
                 break;
-            case 1: *deref_table.dereference(bin2[i].first, 0, 1) = i;
+            case 1: *deref_table.dereference(bin2[i].first, {0, 1}) = i;
                 break;
-            case 2: *deref_table.dereference(bin3[i].first, 2, 0) = i;
+            case 2: *deref_table.dereference(bin3[i].first, {2, 0}) = i;
                 break;
             default: FAIL() << "unexpected modulo result";
         }
@@ -146,15 +146,15 @@ void TestDereferenceTable() {
 
         switch (i % 3) {
             case 0:
-                val1 = *deref_table.dereference(bin1[i].first, 0, 2);
+                val1 = *deref_table.dereference(bin1[i].first, {0, 2});
                 val2 = *bin1[i].second;
                 break;
             case 1:
-                val1 = *deref_table.dereference(bin2[i].first, 0, 1);
+                val1 = *deref_table.dereference(bin2[i].first, {0, 1});
                 val2 = *bin2[i].second;
                 break;
             case 2:
-                val1 = *deref_table.dereference(bin3[i].first, 2, 0);
+                val1 = *deref_table.dereference(bin3[i].first, {2, 0});
                 val2 = *bin3[i].second;
                 break;
             default: FAIL() << "unexpected modulo result";
@@ -167,17 +167,17 @@ void TestDereferenceTable() {
     const int free_count = (ENTRY_COUNT + 1) / 2;
 
     for (int i = 0; i < free_count; ++i) {
-        deref_table.free(bin1[i].first, 0, 0);
-        deref_table.free(bin2[i].first, 1, 1);
-        deref_table.free(bin3[i].first, 2, 2);
+        deref_table.free(bin1[i].first, {0, 0});
+        deref_table.free(bin2[i].first, {1, 1});
+        deref_table.free(bin3[i].first, {2, 2});
     }
 
     ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT - 3 * free_count);
 
     for (int i = 0; i < free_count; ++i) {
-        deref_table.allocate(0, 1);
-        deref_table.allocate(1, 2);
-        deref_table.allocate(2, 0);
+        deref_table.allocate({0, 1});
+        deref_table.allocate({1, 2});
+        deref_table.allocate({2, 0});
     }
 
     ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT);
@@ -258,7 +258,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateSameBucketPair) {
     run_on_threads(THREADS, [&](unsigned int t) {
         results[t].reserve(ALLOCS_PER_THREAD);
         for (size_t i = 0; i < ALLOCS_PER_THREAD; ++i) {
-            auto p = table.allocate(/*h1=*/3, /*h2=*/17);
+            auto p = table.allocate({3, 17});
             *p.second = static_cast<uint32_t>((t << 16) | i);
             results[t].push_back(p);
         }
@@ -277,7 +277,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateSameBucketPair) {
     for (unsigned int t = 0; t < THREADS; ++t) {
         for (size_t i = 0; i < ALLOCS_PER_THREAD; ++i) {
             const auto expected = static_cast<uint32_t>((t << 16) | i);
-            ASSERT_EQ(*table.dereference(results[t][i].first, 3, 17), expected);
+            ASSERT_EQ(*table.dereference(results[t][i].first, {3, 17}), expected);
         }
     }
 }
@@ -299,7 +299,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateDisjointBuckets) {
         const uint64_t h2 = 2 * t + 1;
         results[t].reserve(ALLOCS_PER_THREAD);
         for (size_t i = 0; i < ALLOCS_PER_THREAD; ++i) {
-            auto p = table.allocate(h1, h2);
+            auto p = table.allocate({h1, h2});
             *p.second = static_cast<uint32_t>((t << 16) | i);
             results[t].push_back(p);
         }
@@ -318,7 +318,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateDisjointBuckets) {
         const uint64_t h2 = 2 * t + 1;
         for (size_t i = 0; i < ALLOCS_PER_THREAD; ++i) {
             const auto expected = static_cast<uint32_t>((t << 16) | i);
-            ASSERT_EQ(*table.dereference(results[t][i].first, h1, h2), expected);
+            ASSERT_EQ(*table.dereference(results[t][i].first, {h1, h2}), expected);
         }
     }
 }
@@ -350,7 +350,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateRandomHashes) {
             const uint64_t h1 = dist(rng);
             const uint64_t h2 = dist(rng);
             try {
-                auto p = table.allocate(h1, h2);
+                auto p = table.allocate({h1, h2});
                 const auto expected = static_cast<uint32_t>((t << 16) | (i & 0xFFFF));
                 *p.second = expected;
                 results[t].push_back({p.first, p.second, h1, h2, expected});
@@ -372,7 +372,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateRandomHashes) {
 
     for (auto &r: results)
         for (auto &e: r)
-            ASSERT_EQ(*table.dereference(e.tp, e.h1, e.h2), e.expected);
+            ASSERT_EQ(*table.dereference(e.tp, {e.h1, e.h2}), e.expected);
 }
 
 // ----------------------------------------------------------------------------
@@ -403,15 +403,15 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateFree) {
             const size_t slot = slot_dist(rng);
             if (live[slot].alive) {
                 // Validate the value we previously stored is still intact, then free.
-                ASSERT_EQ(*table.dereference(live[slot].tp, live[slot].h1, live[slot].h2),
+                ASSERT_EQ(*table.dereference(live[slot].tp, {live[slot].h1, live[slot].h2}),
                           static_cast<uint32_t>((t << 16) | slot));
-                table.free(live[slot].tp, live[slot].h1, live[slot].h2);
+                table.free(live[slot].tp, {live[slot].h1, live[slot].h2});
                 live[slot].alive = false;
             } else {
                 const uint64_t h1 = hash_dist(rng);
                 const uint64_t h2 = hash_dist(rng);
                 try {
-                    auto p = table.allocate(h1, h2);
+                    auto p = table.allocate({h1, h2});
                     *p.second = static_cast<uint32_t>((t << 16) | slot);
                     live[slot] = {p.first, p.second, h1, h2, true};
                 } catch (const std::runtime_error &) {
@@ -423,7 +423,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateFree) {
         // Release anything we still hold, so the final size check is deterministic.
         for (auto &s: live)
             if (s.alive)
-                table.free(s.tp, s.h1, s.h2);
+                table.free(s.tp, {s.h1, s.h2});
     });
 
     ASSERT_EQ(table.size(), 0u);
@@ -431,7 +431,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentAllocateFree) {
     // Fresh allocations must still succeed and be unique after the churn.
     std::vector<uint32_t *> ptrs;
     for (int i = 0; i < 256; ++i) {
-        ptrs.push_back(table.allocate(i, i + 1).second);
+        ptrs.push_back(table.allocate({i, i + 1}).second);
     }
     ASSERT_ALL_POINTERS_UNIQUE(ptrs);
 }
@@ -456,7 +456,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentFillToCapacity) {
         // Try harder than capacity to guarantee we hit the exhaustion path.
         for (size_t i = 0; i < capacity * 2; ++i) {
             try {
-                auto p = table.allocate(dist(rng), dist(rng));
+                auto p = table.allocate({dist(rng), dist(rng)});
                 *p.second = 0xDEADBEEF;
                 results[t].push_back(p.second);
                 successful_allocs.fetch_add(1, std::memory_order::relaxed);
@@ -502,7 +502,7 @@ TEST(TestTinyPtrThreadSafety, FillAndDrainCycles) {
                 const uint64_t h1 = dist(rng);
                 const uint64_t h2 = dist(rng);
                 try {
-                    auto p = table.allocate(h1, h2);
+                    auto p = table.allocate({h1, h2});
                     *p.second = (static_cast<uint32_t>(cycle) << 24) | (t << 16) | i;
                     owned[t].push_back({p.first, {h1, h2}});
                 } catch (const std::runtime_error &) {
@@ -521,7 +521,7 @@ TEST(TestTinyPtrThreadSafety, FillAndDrainCycles) {
         // Phase 2: drain all owned items from all threads
         run_on_threads(THREADS, [&](unsigned int t) {
             for (auto &e: owned[t]) {
-                table.free(e.first, e.second.first, e.second.second);
+                table.free(e.first, {e.second.first, e.second.second});
             }
         });
 
@@ -531,7 +531,7 @@ TEST(TestTinyPtrThreadSafety, FillAndDrainCycles) {
     // After all the churn, the table must still be fully usable.
     std::vector<uint32_t *> ptrs;
     for (int i = 0; i < 512; ++i)
-        ptrs.push_back(table.allocate(i, i * 7 + 1).second);
+        ptrs.push_back(table.allocate({i, i * 7 + 1}).second);
     ASSERT_ALL_POINTERS_UNIQUE(ptrs);
 }
 
@@ -563,7 +563,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentDereferenceWrites) {
         for (size_t i = 0; i < SLOTS_PER_THREAD; ++i) {
             const uint64_t h1 = dist(rng);
             const uint64_t h2 = dist(rng);
-            auto p = table.allocate(h1, h2);
+            auto p = table.allocate({h1, h2});
             owned[t].push_back({p.first, p.second, h1, h2});
         }
     }
@@ -571,7 +571,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentDereferenceWrites) {
     run_on_threads(THREADS, [&](unsigned int t) {
         for (size_t w = 0; w < WRITES_PER_SLOT; ++w) {
             for (auto &o: owned[t]) {
-                *table.dereference(o.tp, o.h1, o.h2) = static_cast<uint32_t>((t << 20) | w);
+                *table.dereference(o.tp, {o.h1, o.h2}) = static_cast<uint32_t>((t << 20) | w);
             }
         }
     });
@@ -580,7 +580,7 @@ TEST(TestTinyPtrThreadSafety, ConcurrentDereferenceWrites) {
     for (unsigned int t = 0; t < THREADS; ++t) {
         const auto expected = static_cast<uint32_t>((t << 20) | (WRITES_PER_SLOT - 1));
         for (auto &o: owned[t]) {
-            ASSERT_EQ(*table.dereference(o.tp, o.h1, o.h2), expected);
+            ASSERT_EQ(*table.dereference(o.tp, {o.h1, o.h2}), expected);
         }
     }
 
@@ -620,7 +620,7 @@ TEST(TestTinyPtrThreadSafety, RandomizedStress) {
                 const uint64_t h1 = hash_dist(rng);
                 const uint64_t h2 = hash_dist(rng);
                 try {
-                    auto p = table.allocate(h1, h2);
+                    auto p = table.allocate({h1, h2});
                     const auto v = static_cast<uint32_t>((t << 24) | (i & 0x00FFFFFF));
                     *p.second = v;
                     live.push_back({p.first, p.second, h1, h2, v});
@@ -632,12 +632,12 @@ TEST(TestTinyPtrThreadSafety, RandomizedStress) {
                 // dereference and verify
                 std::uniform_int_distribution<size_t> idx_dist(0, live.size() - 1);
                 const auto &s = live[idx_dist(rng)];
-                ASSERT_EQ(*table.dereference(s.tp, s.h1, s.h2), s.value);
+                ASSERT_EQ(*table.dereference(s.tp, {s.h1, s.h2}), s.value);
             } else {
                 // free
                 std::uniform_int_distribution<size_t> idx_dist(0, live.size() - 1);
                 const size_t idx = idx_dist(rng);
-                table.free(live[idx].tp, live[idx].h1, live[idx].h2);
+                table.free(live[idx].tp, {live[idx].h1, live[idx].h2});
                 live[idx] = live.back();
                 live.pop_back();
                 live_counter.fetch_sub(1, std::memory_order::relaxed);
@@ -646,7 +646,7 @@ TEST(TestTinyPtrThreadSafety, RandomizedStress) {
 
         // cleanup
         for (auto &s: live) {
-            table.free(s.tp, s.h1, s.h2);
+            table.free(s.tp, {s.h1, s.h2});
             live_counter.fetch_sub(1, std::memory_order::relaxed);
         }
     });

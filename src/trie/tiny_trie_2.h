@@ -11,7 +11,7 @@
 // TODO:
 //  - Delete empty nodes
 /**
- * @class TinyTrie
+ * @class TinyTrie2
  * @brief A memory-efficient Trie implementation using tiny pointers and pointer tagging for leaf nodes.
  *
  * This Trie implementation uses the power-of-two-choice tiny pointer scheme to efficiently store a set
@@ -20,15 +20,20 @@
  * Additionally, empty leaves indicating a stored key are replaced by using a tagged tiny pointer stored
  * in the parent.
  *
- * As stable ID the actual word represented by the path from the root to any given node is used.
+ * As stable ID the memory location of the parent node together with the character of the edge from the
+ * parent to the node is used.
  */
-class TinyTrie {
+class TinyTrie2 {
 private:
   class Node {
   public:
     bool is_terminal = false;
     std::array<TinyPtr<>, 256> nodes;
   };
+
+  static_assert(sizeof(Node) >= 256,
+                "Node must be at least 1 byte in size to store free slot index")
+  ;
 
   using TinyPtrT = DerefTable<Node>::TinyPtrT;
 
@@ -38,25 +43,25 @@ private:
 
   mutable DerefTable<Node> deref_table;
 
-  explicit TinyTrie(size_t expected_number_of_nodes);
+  explicit TinyTrie2(size_t expected_number_of_nodes);
 
   template <typename StringT = std::string_view>
-  explicit TinyTrie(const std::vector<StringT>& sorted_words);
+  explicit TinyTrie2(const std::vector<StringT>& sorted_words);
 
 public:
-  static TinyTrie Create(const size_t expected_number_of_nodes) {
-    return TinyTrie(expected_number_of_nodes);
+  static TinyTrie2 Create(const size_t expected_number_of_nodes) {
+    return TinyTrie2(expected_number_of_nodes);
   }
 
   template <typename StringT = std::string_view>
-  static TinyTrie BulkCreate(const std::vector<StringT>& sorted_words) {
-    return TinyTrie(sorted_words);
+  static TinyTrie2 BulkCreate(const std::vector<StringT>& sorted_words) {
+    return TinyTrie2(sorted_words);
   }
 
   template <typename StringT = std::string_view>
-  static TinyTrie BulkCreateUnsorted(std::vector<StringT>& words) {
+  static TinyTrie2 BulkCreateUnsorted(std::vector<StringT>& words) {
     std::ranges::sort(words);
-    return TinyTrie(words);
+    return TinyTrie2(words);
   }
 
   size_t size() const { return count; }
@@ -70,20 +75,18 @@ public:
   bool contains(std::string_view word) const;
 
 private:
-  std::pair<Node*, std::pair<uint64_t, uint64_t> > create_parent_node(
-      std::string_view word) const;
+  Node* create_parent_node(std::string_view word) const;
 
-  std::pair<Node*, std::pair<uint64_t, uint64_t> > get_parent_node(
-      std::string_view word) const;
+  Node* get_parent_node(std::string_view word) const;
 };
 
-inline TinyTrie::TinyTrie(const size_t expected_number_of_nodes)
+inline TinyTrie2::TinyTrie2(const size_t expected_number_of_nodes)
   : count(0), deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
   root = deref_table.allocate({0, 0});
 }
 
 template <typename StringT>
-TinyTrie::TinyTrie(const std::vector<StringT>& sorted_words) : count(0) {
+TinyTrie2::TinyTrie2(const std::vector<StringT>& sorted_words) : count(0) {
   assert(std::ranges::is_sorted(sorted_words) &&
       "use BulkCreateUnsorted if your words are not already sorted alphabetically. Note that sorting "
       "is case-sensitive.");

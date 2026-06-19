@@ -235899,7 +235899,7 @@ Zyzzogeton
   std::string line;
   while (std::getline(in, line)) {
     if (!line.empty()) {
-      line += '\0'; // TODO: Why?
+      line += '\0';
       result.emplace_back(line);
     }
   }

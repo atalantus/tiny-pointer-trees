@@ -1,11 +1,11 @@
-#include "trie/tiny_trie.h"
+#include "trie/tiny_trie_2.h"
 #include "trie/trie_util.h"
 
-bool TinyTrie::insert(const std::string_view word) {
+bool TinyTrie2::insert(const std::string_view word) {
   Node* cur_node = root.second;
 
   if (!word.empty()) {
-    auto [parent_node, h] = this->create_parent_node(word);
+    auto parent_node = this->create_parent_node(word);
     assert(parent_node);
 
     cur_node = parent_node;
@@ -27,7 +27,7 @@ bool TinyTrie::insert(const std::string_view word) {
 
     // node already exists, go to it
     cur_node = this->deref_table.dereference(cur_node->nodes[c],
-                                             djb2_sdbm_hash(c, h));
+                                             address_hash(cur_node, c));
   }
 
   // mark node as terminal and update count
@@ -37,11 +37,11 @@ bool TinyTrie::insert(const std::string_view word) {
   return new_word;
 }
 
-bool TinyTrie::remove(const std::string_view word) {
+bool TinyTrie2::remove(const std::string_view word) {
   Node* cur_node = root.second;
 
   if (!word.empty()) {
-    auto [parent_node, h] = this->get_parent_node(word);
+    auto parent_node = this->get_parent_node(word);
 
     if (!parent_node) {
       return false;
@@ -64,7 +64,7 @@ bool TinyTrie::remove(const std::string_view word) {
 
     // node exists, go to it
     cur_node = this->deref_table.dereference(cur_node->nodes[c],
-                                             djb2_sdbm_hash(c, h));
+                                             address_hash(cur_node, c));
   }
 
   // mark node as terminal and update count
@@ -74,11 +74,11 @@ bool TinyTrie::remove(const std::string_view word) {
   return is_terminal;
 }
 
-bool TinyTrie::contains(const std::string_view word) const {
+bool TinyTrie2::contains(const std::string_view word) const {
   const Node* cur_node = root.second;
 
   if (!word.empty()) {
-    auto [parent_node, h] = this->get_parent_node(word);
+    auto parent_node = this->get_parent_node(word);
 
     if (!parent_node) {
       return false;
@@ -99,22 +99,21 @@ bool TinyTrie::contains(const std::string_view word) const {
 
     // node exists, go to it
     cur_node = this->deref_table.dereference(cur_node->nodes[c],
-                                             djb2_sdbm_hash(c, h));
+                                             address_hash(cur_node, c));
   }
 
   // mark node as terminal and update count
   return cur_node->is_terminal;
 }
 
-std::pair<TinyTrie::Node*, std::pair<uint64_t, uint64_t> >
-TinyTrie::create_parent_node(std::string_view word) const {
+TinyTrie2::Node*
+TinyTrie2::create_parent_node(std::string_view word) const {
   Node* cur_node = root.second;
-  auto h = std::make_pair(djb2_hash_init, sdbm_hash_init);
 
   // traverse all characters except the last
   for (size_t i = 0; i < word.size() - 1; ++i) {
     const auto c = word[i];
-    h = djb2_sdbm_hash(c, h);
+    const auto h = address_hash(cur_node, c);
 
     const auto is_tagged = cur_node->nodes[c] == TinyPtrT::tagged;
 
@@ -128,26 +127,25 @@ TinyTrie::create_parent_node(std::string_view word) const {
     }
   }
 
-  return {cur_node, h};
+  return cur_node;
 }
 
-std::pair<TinyTrie::Node*, std::pair<uint64_t, uint64_t> >
-TinyTrie::get_parent_node(std::string_view word) const {
+TinyTrie2::Node*
+TinyTrie2::get_parent_node(std::string_view word) const {
   Node* cur_node = root.second;
-  auto h = std::make_pair(djb2_hash_init, sdbm_hash_init);
 
   // traverse all characters except the last
   for (size_t i = 0; i < word.size() - 1; ++i) {
     const auto c = word[i];
-    h = djb2_sdbm_hash(c, h);
 
     if (cur_node->nodes[c] == TinyPtrT::null || cur_node->nodes[c] ==
         TinyPtrT::tagged) {
-      return {nullptr, h};
+      return nullptr;
     }
 
-    cur_node = this->deref_table.dereference(cur_node->nodes[c], h);
+    cur_node = this->deref_table.dereference(cur_node->nodes[c],
+                                             address_hash(cur_node, c));
   }
 
-  return {cur_node, h};
+  return cur_node;
 }

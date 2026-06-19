@@ -12,74 +12,88 @@ inline uint64_t djb2_hash_init = 5381;
 inline uint64_t sdbm_hash_init = 0;
 
 inline uint64_t djb2_hash(const char c, const uint64_t h) {
-    return (h << 5) + h + c;
+  return (h << 5) + h + c;
 }
 
 inline uint64_t sdbm_hash(const char c, const uint64_t h) {
-    return (h << 6) + (h << 16) - h + c;
+  return (h << 6) + (h << 16) - h + c;
 }
 
-template<typename StringT = std::string_view>
-std::array<size_t, 257> compute_node_counts_for_depth(const std::vector<StringT> &sorted_words, const size_t start,
-                                                      const size_t end, const size_t depth) {
-    auto res = std::array<size_t, 257>{};
-    res.fill(0);
+inline std::pair<uint64_t, uint64_t> djb2_sdbm_hash(
+    const char c, const std::pair<uint64_t, uint64_t>& h) {
+  return {djb2_hash(c, h.first), sdbm_hash(c, h.second)};
+}
 
-    if (start >= end) { return res; }
+inline std::pair<uint64_t, uint64_t> address_hash(
+    const void* ptr, const uint8_t shift) {
+  const auto h = reinterpret_cast<uint64_t>(ptr);
+  return {h + shift, h - shift};
+}
 
-    // the actual start index of the first word
-    size_t first_start = end;
+template <typename StringT = std::string_view>
+std::array<size_t, 257> compute_node_counts_for_depth(
+    const std::vector<StringT>& sorted_words, const size_t start,
+    const size_t end, const size_t depth) {
+  auto res = std::array<size_t, 257>{};
+  res.fill(0);
 
-    for (auto i = start; i < end; ++i) {
-        if (depth < sorted_words[i].size()) {
-            first_start = i;
-            break;
-        }
+  if (start >= end) { return res; }
+
+  // the actual start index of the first word
+  size_t first_start = end;
+
+  for (auto i = start; i < end; ++i) {
+    if (depth < sorted_words[i].size()) {
+      first_start = i;
+      break;
     }
+  }
 
-    if (first_start == end) {
-        // leaf node
-        res[0] = 1;
-        return res;
-    }
-
-    // the actual end index of the last word
-    size_t last_end = end - 1;
-    for (; last_end > first_start; --last_end) {
-        if (depth < sorted_words[last_end].size()) { break; }
-    }
-
-    size_t cur_node_child_count = 1;
-    size_t cur_char_start = first_start;
-    auto cur_char = sorted_words[first_start][depth];
-
-    if (last_end > first_start && sorted_words[last_end][depth] != cur_char) {
-        // node has at least two different children -> iterate over all words in range
-        for (auto i = first_start + 1; i <= last_end; ++i) {
-            if (depth >= sorted_words[i].size()) { continue; }
-
-            if (sorted_words[i][depth] != cur_char) {
-                cur_node_child_count++;
-
-                // compute node counts for subtree
-                auto subtree_node_count = compute_node_counts_for_depth(sorted_words, cur_char_start, i, depth + 1);
-                for (size_t j = 0; j < 257; ++j) { res[j] += subtree_node_count[j]; }
-
-                cur_char_start = i;
-                cur_char = sorted_words[i][depth];
-            }
-        }
-    }
-
-    // handle last character subgroup
-    const auto subtree_node_count = compute_node_counts_for_depth(sorted_words, cur_char_start, end, depth + 1);
-    for (size_t j = 0; j < 257; ++j) { res[j] += subtree_node_count[j]; }
-
-    // count current node
-    assert(cur_node_child_count < 257);
-    res[cur_node_child_count]++;
-
+  if (first_start == end) {
+    // leaf node
+    res[0] = 1;
     return res;
+  }
+
+  // the actual end index of the last word
+  size_t last_end = end - 1;
+  for (; last_end > first_start; --last_end) {
+    if (depth < sorted_words[last_end].size()) { break; }
+  }
+
+  size_t cur_node_child_count = 1;
+  size_t cur_char_start = first_start;
+  auto cur_char = sorted_words[first_start][depth];
+
+  if (last_end > first_start && sorted_words[last_end][depth] != cur_char) {
+    // node has at least two different children -> iterate over all words in range
+    for (auto i = first_start + 1; i <= last_end; ++i) {
+      if (depth >= sorted_words[i].size()) { continue; }
+
+      if (sorted_words[i][depth] != cur_char) {
+        cur_node_child_count++;
+
+        // compute node counts for subtree
+        auto subtree_node_count = compute_node_counts_for_depth(
+            sorted_words, cur_char_start, i, depth + 1);
+        for (size_t j = 0; j < 257; ++j) { res[j] += subtree_node_count[j]; }
+
+        cur_char_start = i;
+        cur_char = sorted_words[i][depth];
+      }
+    }
+  }
+
+  // handle last character subgroup
+  const auto subtree_node_count = compute_node_counts_for_depth(
+      sorted_words, cur_char_start, end, depth + 1);
+  for (size_t j = 0; j < 257; ++j) { res[j] += subtree_node_count[j]; }
+
+  // count current node
+  assert(cur_node_child_count < 257);
+  res[cur_node_child_count]++;
+
+  return res;
 }
 
 /**
@@ -91,9 +105,12 @@ std::array<size_t, 257> compute_node_counts_for_depth(const std::vector<StringT>
  */
 // TODO: Optimize? Better algorithm, remove recursion, vectorization (make array size 256 emitting leaf nodes?),
 //  parallelization, etc.?
-template<typename StringT = std::string_view>
-std::array<size_t, 257> compute_node_counts(const std::vector<StringT> &sorted_words) {
-    assert(std::is_sorted(sorted_words.begin(), sorted_words.end()) && "words must be sorted in ascending order");
+template <typename StringT = std::string_view>
+std::array<size_t, 257> compute_node_counts(
+    const std::vector<StringT>& sorted_words) {
+  assert(
+      std::is_sorted(sorted_words.begin(), sorted_words.end()) &&
+      "words must be sorted in ascending order");
 
-    return compute_node_counts_for_depth(sorted_words, 0, sorted_words.size(), 0);
+  return compute_node_counts_for_depth(sorted_words, 0, sorted_words.size(), 0);
 }

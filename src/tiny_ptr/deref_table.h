@@ -160,12 +160,11 @@ public:
    *
    * This operation is thread-safe.
    *
-   * @param h1 The hash value of the first hash function.
-   * @param h2 The hash value of the second hash function.
+   * @param h A pair of hash values from the first and second hash function.
    * @param special An optional special value to be stored in the tinyptr_t (e.g., for pointer tagging).
    * @return A pair of a tinyptr_t and a pointer to the newly allocated object.
    */
-  std::pair<TinyPtrT, TObject*> allocate(uint64_t h1, uint64_t h2,
+  std::pair<TinyPtrT, TObject*> allocate(std::pair<uint64_t, uint64_t> h,
                                          TTinyPtrT special = 0);
 
   /**
@@ -178,28 +177,26 @@ public:
    * This operation is thread-safe.
    *
    * @param tinyptr The tiny pointer to free.
-   * @param h1 The hash value of the first hash function associated with the tiny pointer.
-   * @param h2 The hash value of the second hash function associated with the tiny pointer.
+   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
    */
-  void free(TinyPtrT tinyptr, uint64_t h1, uint64_t h2);
+  void free(TinyPtrT tinyptr, std::pair<uint64_t, uint64_t> h);
 
   /**
    * "Dereferences" a given tiny pointer and returns a pointer to the object that it points to.
    * @param tinyptr The tiny pointer.
-   * @param h1 The hash value of the first hash function associated with the tiny pointer.
-   * @param h2 The hash value of the second hash function associated with the tiny pointer.
+   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
-  TObject* dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2);
+  TObject* dereference(TinyPtrT tinyptr, std::pair<uint64_t, uint64_t> h);
 
   /**
    * "Dereferences" a given tiny pointer and returns a pointer to the object that it points to.
    * @param tinyptr The tiny pointer.
-   * @param h1 The hash value of the first hash function associated with the tiny pointer.
-   * @param h2 The hash value of the second hash function associated with the tiny pointer.
+   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
-  const TObject* dereference(TinyPtrT tinyptr, uint64_t h1, uint64_t h2) const;
+  const TObject* dereference(TinyPtrT tinyptr,
+                             std::pair<uint64_t, uint64_t> h) const;
 
 private:
   TObject* get_data_object(size_t data_table_index, size_t object_index);
@@ -255,14 +252,14 @@ inline void throw_fill_factor_exception(uint32_t size, uint32_t capacity) {
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
 DerefTable<TObject, TTinyPtr, STinyPtr>::allocate(
-    const uint64_t h1, const uint64_t h2, const TTinyPtr special) {
+    const std::pair<uint64_t, uint64_t> h, const TTinyPtr special) {
   if (_size.load(std::memory_order::relaxed) >= _capacity) {
     throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
                                 _capacity);
   }
 
-  auto h1_index = _ht_prime.mod(h1);
-  auto h2_index = _ht_prime.mod(h2);
+  auto h1_index = _ht_prime.mod(h.first);
+  auto h2_index = _ht_prime.mod(h.second);
 
   auto& h1_meta_data = meta_table[h1_index];
   auto& h2_meta_data = meta_table[h2_index];
@@ -320,10 +317,10 @@ retry: {
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
-    const TinyPtrT tinyptr, const uint64_t h1, const uint64_t h2) {
-  const uint64_t h = tinyptr.hash_fn() ? h2 : h1;
+    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) {
+  const uint64_t hash = tinyptr.hash_fn() ? h.second : h.first;
   TTinyPtr index = tinyptr.index();
-  const auto h_index = _ht_prime.mod(h);
+  const auto h_index = _ht_prime.mod(hash);
 
   auto& h_meta_data = meta_table[h_index];
 
@@ -342,25 +339,23 @@ void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
-    const TinyPtrT tinyptr, const uint64_t h1,
-    const uint64_t h2) {
+    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) {
   return const_cast<TObject*>(static_cast<const DerefTable*>(this)->dereference(
-      tinyptr, h1, h2));
+      tinyptr, h));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
-    const TinyPtrT tinyptr, const uint64_t h1,
-    const uint64_t h2) const {
+    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) const {
   if (tinyptr == TinyPtrT::null) { return nullptr; }
   if (tinyptr == TinyPtrT::tagged) {
     throw std::runtime_error("Cannot dereference tagged tinyptr");
   }
 
-  const uint64_t h = tinyptr.hash_fn() ? h2 : h1;
+  const uint64_t hash = tinyptr.hash_fn() ? h.second : h.first;
   const TTinyPtr index = tinyptr.index();
 
-  return get_data_object(_ht_prime.mod(h), index);
+  return get_data_object(_ht_prime.mod(hash), index);
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
