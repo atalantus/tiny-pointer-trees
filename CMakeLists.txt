@@ -15,6 +15,17 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+enable_testing()
+
+include(FetchContent)
+FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.17.0
+)
+FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
+
 add_library(tiny_pointer_trees STATIC
         src/trie/tiny_trie.cpp
         src/trie/tiny_trie_2.cpp
@@ -24,5 +35,8 @@ target_include_directories(tiny_pointer_trees PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-enable_testing()
+target_include_directories(tiny_pointer_trees PRIVATE
+        $<TARGET_PROPERTY:GTest::gtest,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
 add_subdirectory(test)
