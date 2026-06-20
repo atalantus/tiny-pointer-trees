@@ -1,0 +1,3 @@
+[submodule "src/art/ARTSynchronized"]
+	path = src/art/ARTSynchronized
+	url = https://github.com/flode/ARTSynchronized.git
