@@ -4,6 +4,7 @@
 #include <memory>
 #include <numeric>
 #include <string_view>
+#include <gtest/gtest_prod.h>
 
 #include "tiny_ptr/deref_table.h"
 #include "trie/trie_util.h"
@@ -24,6 +25,8 @@
  * parent to the node is used.
  */
 class TinyTrie2 {
+  FRIEND_TEST(TestTrie, TinyTrie2RemoveDeletesEmptyNodes);
+
 private:
   class Node {
   public:
@@ -78,6 +81,8 @@ private:
   Node* create_parent_node(std::string_view word) const;
 
   Node* get_parent_node(std::string_view word) const;
+
+  static size_t compute_child_count(const Node* node);
 };
 
 inline TinyTrie2::TinyTrie2(const size_t expected_number_of_nodes)

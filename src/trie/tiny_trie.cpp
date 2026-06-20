@@ -70,7 +70,7 @@ bool TinyTrie::remove(const std::string_view word) {
   // mark node as terminal and update count
   const auto is_terminal = cur_node->is_terminal;
   cur_node->is_terminal = false;
-  count--;
+  count -= is_terminal;
   return is_terminal;
 }
 

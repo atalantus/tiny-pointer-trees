@@ -11,6 +11,18 @@
 
 template <typename TTrie>
 void test_trie() {
+  auto emptyWordTrie = TTrie::template BulkCreate<std::string>({""});
+  ASSERT_TRUE(emptyWordTrie.contains(""));
+  ASSERT_EQ(emptyWordTrie.size(), 1);
+  ASSERT_FALSE(emptyWordTrie.insert(""));
+  ASSERT_EQ(emptyWordTrie.size(), 1);
+  ASSERT_TRUE(emptyWordTrie.remove(""));
+  ASSERT_FALSE(emptyWordTrie.contains(""));
+  ASSERT_EQ(emptyWordTrie.size(), 0);
+  ASSERT_FALSE(emptyWordTrie.remove(""));
+  ASSERT_FALSE(emptyWordTrie.contains(""));
+  ASSERT_EQ(emptyWordTrie.size(), 0);
+
   auto testWords = LoadTestWords();
   auto trie      = TTrie::template BulkCreateUnsorted<std::string>(testWords);
 
@@ -38,6 +50,54 @@ TEST(TestTrie, TinyTrie) {
 
 TEST(TestTrie, TinyTrie2) {
   test_trie<TinyTrie2>();
+}
+
+TEST(TestTrie, TinyTrie2RemoveDeletesEmptyNodes) {
+  /*
+    *           ""
+    *        /      \
+    *     "a"        "b"
+    *    /   \        |
+    * "ab"  "ac"    "bc"
+    *                 |
+    *               "bca"
+    */
+  const std::vector<std::string> testWords{"", "a", "ab", "ac", "b", "bc", "bca"};
+  auto trie = TinyTrie2::BulkCreate(testWords);
+
+  ASSERT_EQ(trie.size(), testWords.size());
+  ASSERT_EQ(trie.node_count(), 4);
+
+  auto bc_node = trie.get_parent_node("bca");
+  ASSERT_TRUE(bc_node->is_terminal);
+  ASSERT_TRUE(bc_node->nodes['a'] == TinyPtr<>::tagged);
+
+  ASSERT_TRUE(trie.remove("bc"));
+  ASSERT_FALSE(bc_node->is_terminal);
+  ASSERT_TRUE(bc_node->nodes['a'] == TinyPtr<>::tagged);
+  ASSERT_EQ(trie.node_count(), 4);
+
+  ASSERT_TRUE(trie.remove("bca"));
+  ASSERT_EQ(trie.get_parent_node("bca"), nullptr);
+  ASSERT_EQ(trie.get_parent_node("bc"), nullptr);
+  ASSERT_EQ(trie.root.second->nodes['b'], TinyPtr<>::tagged);
+  ASSERT_EQ(trie.node_count(), 2);
+
+  auto a_node = trie.get_parent_node("ac");
+  ASSERT_TRUE(a_node->is_terminal);
+  ASSERT_TRUE(a_node->nodes['b'] == TinyPtr<>::tagged);
+  ASSERT_TRUE(a_node->nodes['c'] == TinyPtr<>::tagged);
+  ASSERT_EQ(trie.node_count(), 2);
+
+  ASSERT_TRUE(trie.remove("ac"));
+  ASSERT_TRUE(a_node->is_terminal);
+  ASSERT_TRUE(a_node->nodes['b'] == TinyPtr<>::tagged);
+  ASSERT_TRUE(a_node->nodes['c'] == TinyPtr<>::null);
+  ASSERT_EQ(trie.node_count(), 2);
+
+  ASSERT_TRUE(trie.remove("ab"));
+  ASSERT_TRUE(trie.root.second->nodes['a'] == TinyPtr<>::tagged);
+  ASSERT_EQ(trie.node_count(), 1);
 }
 
 TEST(TestTrie, TinyValueTrie) {
