@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "tiny_ptr/deref_table.h"
+#include "tiny_ptr/util.h"
 #include "trie/trie_util.h"
 
 // TODO:

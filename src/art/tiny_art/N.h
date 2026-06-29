@@ -11,11 +11,14 @@
 #include <string.h>
 #include "../Key.h"
 #include "../Epoche.h"
+#include "../../tiny_ptr/deref_table.h"
 
 using TID = uint64_t;
 
 using namespace ART;
-namespace ART_OLC {
+
+namespace TINY_ART_OLC {
+class ArtDerefTables;
 /*
  * SynchronizedTree
  * LockCouplingTree
@@ -23,272 +26,323 @@ namespace ART_OLC {
  * UnsynchronizedTree
  */
 
-    enum class NTypes : uint8_t {
-        N4 = 0,
-        N16 = 1,
-        N48 = 2,
-        N256 = 3
-    };
+class N;
+class N4;
+class N16;
+class N256;
+class Leaf;
 
-    static constexpr uint32_t maxStoredPrefixLength = 11;
-
-    using Prefix = uint8_t[maxStoredPrefixLength];
-
-    class N {
-    protected:
-        N(NTypes type, const uint8_t *prefix, uint32_t prefixLength) {
-            setType(type);
-            setPrefix(prefix, prefixLength);
-        }
-
-        N(const N &) = delete;
-
-        N(N &&) = delete;
-
-        //2b type 60b version 1b lock 1b obsolete
-        std::atomic<uint64_t> typeVersionLockObsolete{0b100};
-        // version 1, unlocked, not obsolete
-        uint32_t prefixCount = 0;
-
-        uint8_t count = 0;
-        Prefix prefix;
+/**
+* In lowest-byte-first order the bits are grouped as follows:
+* | 0 | 1 2 | 3 4 5 6 7 |
+* where:
+*  - 0 indicates the hash function used
+*  - 1-2 indicate the node type (0: Leaf, 1: N4, 2: N16, 3: n256)
+*  - 3-7 indicate the index inside the dereference table's bucket (starting at 1)
+*/
+using ArtTinyPtr = TinyPtr<uint8_t, 2>;
+using ArtN4DerefTable = DerefTable<N4, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
+using ArtN16DerefTable = DerefTable<N16, ArtTinyPtr::value_type, ArtTinyPtr::SB>
+;
+using ArtN256DerefTable = DerefTable<
+  N256, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
+using ArtLeafDerefTable = DerefTable<
+  Leaf, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
+static constexpr uint8_t LeafS = 0;
+static constexpr uint8_t N4S = 1;
+static constexpr uint8_t N16S = 2;
+static constexpr uint8_t N256S = 3;
 
 
-        void setType(NTypes type);
+enum class NTypes : uint8_t {
+  N4 = N4S,
+  N16 = N16S,
+  N256 = N256S
+};
 
-        static uint64_t convertTypeToVersion(NTypes type);
+static constexpr uint32_t maxStoredPrefixLength = 11;
 
-    public:
+using Prefix = uint8_t[maxStoredPrefixLength];
 
-        NTypes getType() const;
+class N {
+protected:
+  N(NTypes type, const uint8_t* prefix, uint32_t prefixLength) {
+    setType(type);
+    setPrefix(prefix, prefixLength);
+  }
 
-        uint32_t getCount() const;
+  N(const N&) = delete;
 
-        bool isLocked(uint64_t version) const;
+  N(N&&) = delete;
 
-        void writeLockOrRestart(bool &needRestart);
+  //2b type 60b version 1b lock 1b obsolete
+  std::atomic<uint64_t> typeVersionLockObsolete{0b100};
+  // version 1, unlocked, not obsolete
+  uint32_t prefixCount = 0;
 
-        void upgradeToWriteLockOrRestart(uint64_t &version, bool &needRestart);
+  uint8_t count = 0;
+  Prefix prefix;
 
-        void writeUnlock();
 
-        uint64_t readLockOrRestart(bool &needRestart) const;
+  void setType(NTypes type);
 
-        /**
-         * returns true if node hasn't been changed in between
-         */
-        void checkOrRestart(uint64_t startRead, bool &needRestart) const;
-        void readUnlockOrRestart(uint64_t startRead, bool &needRestart) const;
+  static uint64_t convertTypeToVersion(NTypes type);
 
-        static bool isObsolete(uint64_t version);
+public:
+  NTypes getType() const;
 
-        /**
-         * can only be called when node is locked
-         */
-        void writeUnlockObsolete() {
-            typeVersionLockObsolete.fetch_add(0b11);
-        }
+  uint32_t getCount() const;
 
-        static N *getChild(const uint8_t k, const N *node);
+  bool isLocked(uint64_t version) const;
 
-        static void insertAndUnlock(N *node, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart,
-                                    ThreadInfo &threadInfo);
+  void writeLockOrRestart(bool& needRestart);
 
-        static bool change(N *node, uint8_t key, N *val);
+  void upgradeToWriteLockOrRestart(uint64_t& version, bool& needRestart);
 
-        static void removeAndUnlock(N *node, uint64_t v, uint8_t key, N *parentNode, uint64_t parentVersion, uint8_t keyParent, bool &needRestart, ThreadInfo &threadInfo);
+  void writeUnlock();
 
-        bool hasPrefix() const;
+  uint64_t readLockOrRestart(bool& needRestart) const;
 
-        const uint8_t *getPrefix() const;
+  /**
+   * returns true if node hasn't been changed in between
+   */
+  void checkOrRestart(uint64_t startRead, bool& needRestart) const;
 
-        void setPrefix(const uint8_t *prefix, uint32_t length);
+  void readUnlockOrRestart(uint64_t startRead, bool& needRestart) const;
 
-        void addPrefixBefore(N *node, uint8_t key);
+  static bool isObsolete(uint64_t version);
 
-        uint32_t getPrefixLength() const;
+  /**
+   * can only be called when node is locked
+   */
+  void writeUnlockObsolete() {
+    typeVersionLockObsolete.fetch_add(0b11);
+  }
 
-        static TID getLeaf(const N *n);
+  static ArtTinyPtr getChild(const uint8_t k, const N* node);
 
-        static bool isLeaf(const N *n);
+  static void insertAndUnlock(ArtTinyPtr node, std::pair<uint64_t, uint64_t> h,
+                              ArtDerefTables& deref_tables, uint64_t v,
+                              N* parentNode, uint64_t parentVersion,
+                              uint8_t keyParent,
+                              uint8_t key, ArtTinyPtr val, bool& needRestart,
+                              ThreadInfo& threadInfo);
 
-        static N *setLeaf(TID tid);
+  static bool change(N* node, uint8_t key, ArtTinyPtr val);
 
-        static N *getAnyChild(const N *n);
+  static void removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
+                              ArtDerefTables deref_tables, uint64_t v,
+                              uint8_t key, N* parentNode,
+                              uint64_t parentVersion, uint8_t keyParent,
+                              bool& needRestart, ThreadInfo& threadInfo);
 
-        static TID getAnyChildTid(const N *n, bool &needRestart);
+  bool hasPrefix() const;
 
-        static void deleteChildren(N *node);
+  const uint8_t* getPrefix() const;
 
-        static void deleteNode(N *node);
+  void setPrefix(const uint8_t* prefix, uint32_t length);
 
-        static std::tuple<N *, uint8_t> getSecondChild(N *node, const uint8_t k);
+  void addPrefixBefore(N* node, uint8_t key);
 
-        template<typename curN, typename biggerN>
-        static void insertGrow(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, N *val, bool &needRestart, ThreadInfo &threadInfo);
+  uint32_t getPrefixLength() const;
 
-        template<typename curN, typename smallerN>
-        static void removeAndShrink(curN *n, uint64_t v, N *parentNode, uint64_t parentVersion, uint8_t keyParent, uint8_t key, bool &needRestart, ThreadInfo &threadInfo);
+  static TID getLeaf(const ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h,
+                     ArtDerefTables& derefTables);
 
-        static uint64_t getChildren(const N *node, uint8_t start, uint8_t end, std::tuple<uint8_t, N *> children[],
-                                uint32_t &childrenCount);
-    };
+  static bool isLeaf(const ArtTinyPtr n);
 
-    class N4 : public N {
-    public:
-        uint8_t keys[4];
-        N *children[4] = {nullptr, nullptr, nullptr, nullptr};
+  static N* setLeaf(TID tid);
 
-    public:
-        N4(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N4, prefix,
-                                                                             prefixLength) { }
+  static ArtTinyPtr getAnyChild(const N* n);
 
-        void insert(uint8_t key, N *n);
+  static TID getAnyChildTid(const N* n, bool& needRestart);
 
-        template<class NODE>
-        void copyTo(NODE *n) const;
+  static void deleteNode(ArtTinyPtr node, TinyPtrHashes h,
+                         ArtDerefTables& deref_tables);
 
-        bool change(uint8_t key, N *val);
+  static std::tuple<ArtTinyPtr, uint8_t> getSecondChild(
+      N* node, const uint8_t k);
 
-        N *getChild(const uint8_t k) const;
+  template <typename curN, typename biggerN>
+  static void insertGrow(curN* n, std::pair<uint64_t, uint64_t> h,
+                         ArtDerefTables& deref_tables, uint64_t v,
+                         N* parentNode,
+                         uint64_t parentVersion, uint8_t keyParent, uint8_t key,
+                         ArtTinyPtr val, bool& needRestart,
+                         ThreadInfo& threadInfo);
 
-        void remove(uint8_t k);
+  template <typename curN, typename smallerN>
+  static void removeAndShrink(curN* n, TinyPtrHashes h,
+                              ArtDerefTables& deref_tables, uint64_t v,
+                              N* parentNode,
+                              uint64_t parentVersion, uint8_t keyParent,
+                              uint8_t key, bool& needRestart,
+                              ThreadInfo& threadInfo);
 
-        N *getAnyChild() const;
+  static uint64_t getChildren(const N* node, uint8_t start, uint8_t end,
+                              std::tuple<uint8_t, ArtTinyPtr> children[],
+                              uint32_t& childrenCount);
+};
 
-        bool isFull() const;
+class N4 : public N {
+public:
+  uint8_t keys[4];
+  ArtTinyPtr children[4] = {ArtTinyPtr::null, ArtTinyPtr::null,
+                            ArtTinyPtr::null, ArtTinyPtr::null};
 
-        bool isUnderfull() const;
+private:
+  N4(const uint8_t* prefix, uint32_t prefixLength) : N(NTypes::N4, prefix,
+    prefixLength) {
+  }
 
-        std::tuple<N *, uint8_t> getSecondChild(const uint8_t key) const;
+public:
+  void insert(uint8_t key, ArtTinyPtr n);
 
-        void deleteChildren();
+  template <class NODE>
+  void copyTo(NODE* n) const;
 
-        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-    };
+  bool change(uint8_t key, ArtTinyPtr val);
 
-    class N16 : public N {
-    public:
-        uint8_t keys[16];
-        N *children[16];
+  ArtTinyPtr getChild(const uint8_t k) const;
 
-        static uint8_t flipSign(uint8_t keyByte) {
-            // Flip the sign bit, enables signed SSE comparison of unsigned values, used by Node16
-            return keyByte ^ 128;
-        }
+  void remove(uint8_t k);
 
-        static inline unsigned ctz(uint16_t x) {
-            // Count trailing zeros, only defined for x>0
+  ArtTinyPtr getAnyChild() const;
+
+  bool isFull() const;
+
+  bool isUnderfull() const;
+
+  std::tuple<ArtTinyPtr, uint8_t> getSecondChild(const uint8_t key) const;
+
+  void deleteChildren();
+
+  uint64_t getChildren(uint8_t start, uint8_t end,
+                       std::tuple<uint8_t, ArtTinyPtr>*& children,
+                       uint32_t& childrenCount) const;
+
+  static std::pair<ArtTinyPtr, N4*> Create(const uint8_t* prefix,
+                                           uint32_t prefixLength,
+                                           const TinyPtrHashes& h,
+                                           ArtDerefTables& deref_tables);
+};
+
+class N16 : public N {
+public:
+  uint8_t keys[16];
+  ArtTinyPtr children[16];
+
+  static uint8_t flipSign(uint8_t keyByte) {
+    // Flip the sign bit, enables signed SSE comparison of unsigned values, used by Node16
+    return keyByte ^ 128;
+  }
+
+  static inline unsigned ctz(uint16_t x) {
+    // Count trailing zeros, only defined for x>0
 #ifdef __GNUC__
-            return __builtin_ctz(x);
+    return __builtin_ctz(x);
 #else
-            // Adapted from Hacker's Delight
-   unsigned n=1;
-   if ((x&0xFF)==0) {n+=8; x=x>>8;}
-   if ((x&0x0F)==0) {n+=4; x=x>>4;}
-   if ((x&0x03)==0) {n+=2; x=x>>2;}
-   return n-(x&1);
+    // Adapted from Hacker's Delight
+    unsigned n = 1;
+    if ((x & 0xFF) == 0) {
+      n += 8;
+      x = x >> 8;
+    }
+    if ((x & 0x0F) == 0) {
+      n += 4;
+      x = x >> 4;
+    }
+    if ((x & 0x03) == 0) {
+      n += 2;
+      x = x >> 2;
+    }
+    return n - (x & 1);
 #endif
-        }
+  }
 
-        N *const *getChildPos(const uint8_t k) const;
+  ArtTinyPtr const* getChildPos(const uint8_t k) const;
 
-    public:
-        N16(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N16, prefix,
-                                                                              prefixLength) {
-            memset(keys, 0, sizeof(keys));
-            memset(children, 0, sizeof(children));
-        }
+public:
+  N16(const uint8_t* prefix, uint32_t prefixLength) : N(NTypes::N16, prefix,
+    prefixLength) {
+    memset(keys, 0, sizeof(keys));
+    memset(children, 0, sizeof(children));
+  }
 
-        void insert(uint8_t key, N *n);
+  void insert(uint8_t key, ArtTinyPtr n);
 
-        template<class NODE>
-        void copyTo(NODE *n) const;
+  template <class NODE>
+  void copyTo(NODE* n) const;
 
-        bool change(uint8_t key, N *val);
+  bool change(uint8_t key, ArtTinyPtr val);
 
-        N *getChild(const uint8_t k) const;
+  ArtTinyPtr getChild(const uint8_t k) const;
 
-        void remove(uint8_t k);
+  void remove(uint8_t k);
 
-        N *getAnyChild() const;
+  ArtTinyPtr getAnyChild() const;
 
-        bool isFull() const;
+  bool isFull() const;
 
-        bool isUnderfull() const;
+  bool isUnderfull() const;
 
-        void deleteChildren();
+  void deleteChildren();
 
-        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-    };
+  uint64_t getChildren(uint8_t start, uint8_t end,
+                       std::tuple<uint8_t, ArtTinyPtr>*& children,
+                       uint32_t& childrenCount) const;
 
-    class N48 : public N {
-        uint8_t childIndex[256];
-        N *children[48];
-    public:
-        static const uint8_t emptyMarker = 48;
+  static std::pair<ArtTinyPtr, N16*> Create(const uint8_t* prefix,
+                                            uint32_t prefixLength,
+                                            const TinyPtrHashes& h,
+                                            ArtDerefTables& deref_tables);
+};
 
-        N48(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N48, prefix,
-                                                                              prefixLength) {
-            memset(childIndex, emptyMarker, sizeof(childIndex));
-            memset(children, 0, sizeof(children));
-        }
+class N256 : public N {
+  ArtTinyPtr children[256];
 
-        void insert(uint8_t key, N *n);
+public:
+  N256(const uint8_t* prefix, uint32_t prefixLength) : N(NTypes::N256, prefix,
+    prefixLength) {
+    memset(children, '\0', sizeof(children));
+  }
 
-        template<class NODE>
-        void copyTo(NODE *n) const;
+  void insert(uint8_t key, ArtTinyPtr val);
 
-        bool change(uint8_t key, N *val);
+  template <class NODE>
+  void copyTo(NODE* n) const;
 
-        N *getChild(const uint8_t k) const;
+  bool change(uint8_t key, ArtTinyPtr n);
 
-        void remove(uint8_t k);
+  ArtTinyPtr getChild(const uint8_t k) const;
 
-        N *getAnyChild() const;
+  void remove(uint8_t k);
 
-        bool isFull() const;
+  ArtTinyPtr getAnyChild() const;
 
-        bool isUnderfull() const;
+  bool isFull() const;
 
-        void deleteChildren();
+  bool isUnderfull() const;
 
-        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-    };
+  void deleteChildren();
 
-    class N256 : public N {
-        N *children[256];
+  uint64_t getChildren(uint8_t start, uint8_t end,
+                       std::tuple<uint8_t, ArtTinyPtr>*& children,
+                       uint32_t& childrenCount) const;
 
-    public:
-        N256(const uint8_t *prefix, uint32_t prefixLength) : N(NTypes::N256, prefix,
-                                                                               prefixLength) {
-            memset(children, '\0', sizeof(children));
-        }
+  static std::pair<ArtTinyPtr, N256*> Create(const uint8_t* prefix,
+                                             uint32_t prefixLength,
+                                             const TinyPtrHashes& h,
+                                             ArtDerefTables& deref_tables);
+};
 
-        void insert(uint8_t key, N *val);
+class Leaf {
+public:
+  TID value;
 
-        template<class NODE>
-        void copyTo(NODE *n) const;
-
-        bool change(uint8_t key, N *n);
-
-        N *getChild(const uint8_t k) const;
-
-        void remove(uint8_t k);
-
-        N *getAnyChild() const;
-
-        bool isFull() const;
-
-        bool isUnderfull() const;
-
-        void deleteChildren();
-
-        uint64_t getChildren(uint8_t start, uint8_t end, std::tuple<uint8_t, N *> *&children,
-                         uint32_t &childrenCount) const;
-    };
+  static std::pair<ArtTinyPtr, Leaf*> Create(TID tid,
+                                             const TinyPtrHashes& h,
+                                             ArtDerefTables& deref_tables);
+};
 }
 #endif //ART_OPTIMISTIC_LOCK_COUPLING_N_H

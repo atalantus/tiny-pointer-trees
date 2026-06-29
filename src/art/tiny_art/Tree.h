@@ -4,80 +4,95 @@
 
 #ifndef ART_OPTIMISTICLOCK_COUPLING_N_H
 #define ART_OPTIMISTICLOCK_COUPLING_N_H
+#include "ArtDerefTables.h"
 #include "N.h"
 
 using namespace ART;
 
-namespace ART_OLC {
+namespace TINY_ART_OLC {
+class Tree {
+public:
+  using LoadKeyFunction = void (*)(TID tid, Key& key);
 
-    class Tree {
-    public:
-        using LoadKeyFunction = void (*)(TID tid, Key &key);
+private:
+  ArtDerefTables deref_tables;
 
-    private:
-        N *const root;
+  std::pair<ArtTinyPtr, N256*> const root;
 
-        TID checkKey(const TID tid, const Key &k) const;
+  TID checkKey(const TID tid, const Key& k) const;
 
-        LoadKeyFunction loadKey;
+  LoadKeyFunction loadKey;
 
-        Epoche epoche{256};
+  Epoche epoche{256};
 
-    public:
-        enum class CheckPrefixResult : uint8_t {
-            Match,
-            NoMatch,
-            OptimisticMatch
-        };
+public:
+  enum class CheckPrefixResult : uint8_t {
+    Match,
+    NoMatch,
+    OptimisticMatch
+  };
 
-        enum class CheckPrefixPessimisticResult : uint8_t {
-            Match,
-            NoMatch,
-        };
+  enum class CheckPrefixPessimisticResult : uint8_t {
+    Match,
+    NoMatch,
+  };
 
-        enum class PCCompareResults : uint8_t {
-            Smaller,
-            Equal,
-            Bigger,
-        };
-        enum class PCEqualsResults : uint8_t {
-            BothMatch,
-            Contained,
-            NoMatch
-        };
-        static CheckPrefixResult checkPrefix(N* n, const Key &k, uint32_t &level);
+  enum class PCCompareResults : uint8_t {
+    Smaller,
+    Equal,
+    Bigger,
+  };
 
-        static CheckPrefixPessimisticResult checkPrefixPessimistic(N *n, const Key &k, uint32_t &level,
-                                                                   uint8_t &nonMatchingKey,
-                                                                   Prefix &nonMatchingPrefix,
-                                                                   LoadKeyFunction loadKey, bool &needRestart);
+  enum class PCEqualsResults : uint8_t {
+    BothMatch,
+    Contained,
+    NoMatch
+  };
 
-        static PCCompareResults checkPrefixCompare(const N* n, const Key &k, uint8_t fillKey, uint32_t &level, LoadKeyFunction loadKey, bool &needRestart);
+  static CheckPrefixResult checkPrefix(N* n, const Key& k, uint32_t& level);
 
-        static PCEqualsResults checkPrefixEquals(const N* n, uint32_t &level, const Key &start, const Key &end, LoadKeyFunction loadKey, bool &needRestart);
+  static CheckPrefixPessimisticResult checkPrefixPessimistic(
+      N* n, const Key& k, uint32_t& level,
+      uint8_t& nonMatchingKey,
+      Prefix& nonMatchingPrefix,
+      LoadKeyFunction loadKey, bool& needRestart);
 
-    public:
+  static PCCompareResults checkPrefixCompare(const N* n, const Key& k,
+                                             uint8_t fillKey, uint32_t& level,
+                                             LoadKeyFunction loadKey,
+                                             bool& needRestart);
 
-        Tree(LoadKeyFunction loadKey);
+  static PCEqualsResults checkPrefixEquals(const N* n, uint32_t& level,
+                                           const Key& start, const Key& end,
+                                           LoadKeyFunction loadKey,
+                                           bool& needRestart);
 
-        Tree(const Tree &) = delete;
+public:
+  Tree(LoadKeyFunction loadKey);
 
-        Tree(Tree &&t) : root(t.root), loadKey(t.loadKey) { }
+  Tree(const Tree&) = delete;
 
-        ~Tree();
+  Tree(Tree&& t) : root(t.root), loadKey(t.loadKey) {
+  }
 
-        ThreadInfo getThreadInfo();
+  ~Tree();
 
-        TID lookup(const Key &k, ThreadInfo &threadEpocheInfo) const;
+  ThreadInfo getThreadInfo();
 
-        bool lookupRange(const Key &start, const Key &end, Key &continueKey, TID result[], std::size_t resultLen,
-                         std::size_t &resultCount, ThreadInfo &threadEpocheInfo) const;
+  TID lookup(const Key& k, ThreadInfo& threadEpocheInfo) const;
 
-        bool lookupRange(const Key &start, TID result[], std::size_t resultLen, std::size_t &resultCount, ThreadInfo &threadEpocheInfo) const;
+  bool lookupRange(const Key& start, const Key& end, Key& continueKey,
+                   TID result[], std::size_t resultLen,
+                   std::size_t& resultCount,
+                   ThreadInfo& threadEpocheInfo) const;
 
-        void insert(const Key &k, TID tid, ThreadInfo &epocheInfo);
+  bool lookupRange(const Key& start, TID result[], std::size_t resultLen,
+                   std::size_t& resultCount,
+                   ThreadInfo& threadEpocheInfo) const;
 
-        void remove(const Key &k, TID tid, ThreadInfo &epocheInfo);
-    };
+  void insert(const Key& k, TID tid, ThreadInfo& epocheInfo);
+
+  void remove(const Key& k, TID tid, ThreadInfo& epocheInfo);
+};
 }
 #endif //ART_OPTIMISTICLOCK_COUPLING_N_H

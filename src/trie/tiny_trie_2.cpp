@@ -1,4 +1,6 @@
 #include "trie/tiny_trie_2.h"
+
+#include "tiny_ptr/util.h"
 #include "trie/trie_util.h"
 
 bool TinyTrie2::insert(const std::string_view word) {

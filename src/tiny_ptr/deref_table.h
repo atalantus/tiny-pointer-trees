@@ -2,8 +2,11 @@
 
 #include <cassert>
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <memory>
+#include <new>
+#include <type_traits>
 #include <stdexcept>
 #include <vector>
 
@@ -50,6 +53,8 @@ class DerefTable {
   static_assert(sizeof(TObject) >= 1,
                 "DerefTable requires T to be at least 1 byte in size to store free slot index")
   ;
+  static_assert(std::is_trivially_destructible_v<TObject>,
+                "DerefTable requires trivially destructible TObject because entries are managed as raw storage");
 
   // TODO: Technically if we have a large STinyPtr value the maximum needed type here might be smaller than
   //  TTinyPtrValue
@@ -85,7 +90,10 @@ private:
   };
 
   struct DataTableEntry {
-    std::array<TObject, ENTRIES_PER_BIN_COUNT> entries;
+    struct EntryStorage {
+      alignas(TObject) std::byte bytes[sizeof(TObject)];
+    };
+    std::array<EntryStorage, ENTRIES_PER_BIN_COUNT> entries{};
 
     [[nodiscard]] BucketIndexT get_next_free_slot_index(
         size_t entry_index) const {
@@ -129,17 +137,8 @@ public:
 
   DerefTable& operator=(DerefTable&& other) noexcept {
     if (this != &other) {
-      _size.store(other._size.load(std::memory_order::relaxed),
-                  std::memory_order::relaxed);
-      std::construct_at(&_ht_prime, other._ht_prime);
-      _num_buckets = other._num_buckets;
-      _capacity = other._capacity;
-      meta_table = std::move(other.meta_table);
-      data_table = std::move(other.data_table);
-
-      other._size.store(0, std::memory_order::relaxed);
-      other._num_buckets = 0;
-      other._capacity = 0;
+      this->~DerefTable();
+      new (this) DerefTable(std::move(other));
     }
     return *this;
   }
@@ -219,6 +218,9 @@ DerefTable<TObject, TTinyPtr, STinyPtr>::DerefTable(
   }
 
   for (auto& data_entry : data_table) {
+    if (ZERO_NEW_ALLOCATED_MEMORY) {
+      memset(data_entry.entries.data(), 0, sizeof(data_entry.entries));
+    }
     for (int i = 0; i < data_entry.entries.size() - 1; ++i) {
       data_entry.set_next_free_slot_index(i, i + 1);
     }
@@ -371,6 +373,5 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(
     size_t data_table_index,
     size_t object_index) const {
   // convert TinyPtr to object pointer without any memory lookups!
-  return &data_table[data_table_index].entries[object_index];
-  // return reinterpret_cast<ObjectEntry *>(&data_table[data_table_index]) + object_index;
+  return reinterpret_cast<const TObject*>(&data_table[data_table_index].entries[object_index]);
 }

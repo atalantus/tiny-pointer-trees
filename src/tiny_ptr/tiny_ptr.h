@@ -65,6 +65,8 @@ struct TinyPtr {
   }
 };
 
+using TinyPtrHashes = std::pair<uint64_t, uint64_t>;
+
 static_assert(sizeof(TinyPtr<>) == 1);
 
 template <std::unsigned_integral T, unsigned S>
