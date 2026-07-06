@@ -73,13 +73,13 @@ void N16::remove(uint8_t k) {
   assert(getChild(k) == ArtTinyPtr::null);
 }
 
-ArtTinyPtr N16::getAnyChild() const {
+std::pair<ArtTinyPtr, uint8_t> N16::getAnyChild() const {
   for (int i = 0; i < count; ++i) {
     if (N::isLeaf(children[i])) {
-      return children[i];
+      return {children[i], flipSign(keys[i])};
     }
   }
-  return children[0];
+  return {children[0], flipSign(keys[0])};
 }
 
 uint64_t N16::getChildren(uint8_t start, uint8_t end,

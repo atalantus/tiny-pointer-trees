@@ -5,6 +5,7 @@
 #include "N4.cpp"
 #include "N16.cpp"
 #include "N256.cpp"
+#include "tiny_ptr/util.h"
 
 namespace TINY_ART_OLC {
 void N::setType(NTypes type) {
@@ -42,7 +43,7 @@ void N::writeUnlock() {
   typeVersionLockObsolete.fetch_add(0b10);
 }
 
-ArtTinyPtr N::getAnyChild(const N* node) {
+std::pair<ArtTinyPtr, uint8_t> N::getAnyChild(const N* node) {
   switch (node->getType()) {
     case NTypes::N4: {
       auto n = static_cast<const N4*>(node);
@@ -367,21 +368,26 @@ void N::deleteNode(ArtTinyPtr node, TinyPtrHashes h,
 }
 
 
-TID N::getAnyChildTid(const N* n, bool& needRestart) {
-  const N* nextNode = n;
+TID N::getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
+                      ArtDerefTables deref_tables, bool &needRestart) {
+  std::pair<ArtTinyPtr, const N*> nextNode = n;
 
   while (true) {
-    const N* node = nextNode;
+    const N* node = nextNode.second;
     auto v = node->readLockOrRestart(needRestart);
     if (needRestart) return 0;
 
-    nextNode = getAnyChild(node);
+    auto anyChild = getAnyChild(node);
+    nextNode.first = anyChild.first;
     node->readUnlockOrRestart(v, needRestart);
     if (needRestart) return 0;
 
-    assert(nextNode != nullptr);
-    if (isLeaf(nextNode)) {
-      return getLeaf(nextNode);
+    assert(nextNode.first != ArtTinyPtr::null);
+
+    nextNode.second = deref_tables.dereference(nextNode.first, address_hash(node, anyChild.second));
+
+    if (isLeaf(nextNode.first)) {
+      return reinterpret_cast<const Leaf*>(nextNode.second)->value;
     }
   }
 }

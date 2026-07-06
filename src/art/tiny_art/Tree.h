@@ -1,9 +1,5 @@
-//
-// Created by florian on 18.11.15.
-//
+#pragma once
 
-#ifndef ART_OPTIMISTICLOCK_COUPLING_N_H
-#define ART_OPTIMISTICLOCK_COUPLING_N_H
 #include "ArtDerefTables.h"
 #include "N.h"
 
@@ -95,4 +91,3 @@ public:
   void remove(const Key& k, TID tid, ThreadInfo& epocheInfo);
 };
 }
-#endif //ART_OPTIMISTICLOCK_COUPLING_N_H

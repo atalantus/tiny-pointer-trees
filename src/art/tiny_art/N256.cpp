@@ -40,14 +40,14 @@ void N256::remove(uint8_t k) {
   count--;
 }
 
-ArtTinyPtr N256::getAnyChild() const {
-  ArtTinyPtr anyChild = ArtTinyPtr::null;
+std::pair<ArtTinyPtr, uint8_t> N256::getAnyChild() const {
+  std::pair<ArtTinyPtr, uint8_t> anyChild = {ArtTinyPtr::null, 0};
   for (uint64_t i = 0; i < 256; ++i) {
     if (children[i] != ArtTinyPtr::null) {
       if (N::isLeaf(children[i])) {
-        return children[i];
+        return {children[i], i};
       } else {
-        anyChild = children[i];
+        anyChild = {children[i], i};
       }
     }
   }

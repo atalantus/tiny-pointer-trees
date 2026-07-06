@@ -61,13 +61,13 @@ void N4::remove(uint8_t k) {
   }
 }
 
-ArtTinyPtr N4::getAnyChild() const {
-  ArtTinyPtr anyChild = ArtTinyPtr::null;
+std::pair<ArtTinyPtr, uint8_t> N4::getAnyChild() const {
+  std::pair<ArtTinyPtr, uint8_t> anyChild = {ArtTinyPtr::null, 0};
   for (uint32_t i = 0; i < count; ++i) {
     if (N::isLeaf(children[i])) {
-      return children[i];
+      return {children[i], keys[i]};
     } else {
-      anyChild = children[i];
+      anyChild = {children[i], keys[i]};
     }
   }
   return anyChild;

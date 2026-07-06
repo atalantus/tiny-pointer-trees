@@ -1,11 +1,5 @@
-//
-// Created by florian on 05.08.15.
-//
+#pragma once
 
-#ifndef ART_OPTIMISTIC_LOCK_COUPLING_N_H
-#define ART_OPTIMISTIC_LOCK_COUPLING_N_H
-//#define ART_NOREADLOCK
-//#define ART_NOWRITELOCK
 #include <stdint.h>
 #include <atomic>
 #include <string.h>
@@ -19,12 +13,6 @@ using namespace ART;
 
 namespace TINY_ART_OLC {
 class ArtDerefTables;
-/*
- * SynchronizedTree
- * LockCouplingTree
- * LockCheckFreeReadTree
- * UnsynchronizedTree
- */
 
 class N;
 class N4;
@@ -153,9 +141,10 @@ public:
 
   static N* setLeaf(TID tid);
 
-  static ArtTinyPtr getAnyChild(const N* n);
+  static std::pair<ArtTinyPtr, uint8_t> getAnyChild(const N* n);
 
-  static TID getAnyChildTid(const N* n, bool& needRestart);
+  static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
+                            ArtDerefTables deref_tables, bool &needRestart);
 
   static void deleteNode(ArtTinyPtr node, TinyPtrHashes h,
                          ArtDerefTables& deref_tables);
@@ -207,7 +196,7 @@ public:
 
   void remove(uint8_t k);
 
-  ArtTinyPtr getAnyChild() const;
+  std::pair<ArtTinyPtr, uint8_t> getAnyChild() const;
 
   bool isFull() const;
 
@@ -280,7 +269,7 @@ public:
 
   void remove(uint8_t k);
 
-  ArtTinyPtr getAnyChild() const;
+  std::pair<ArtTinyPtr, uint8_t> getAnyChild() const;
 
   bool isFull() const;
 
@@ -318,7 +307,7 @@ public:
 
   void remove(uint8_t k);
 
-  ArtTinyPtr getAnyChild() const;
+  std::pair<ArtTinyPtr, uint8_t> getAnyChild() const;
 
   bool isFull() const;
 
@@ -345,4 +334,3 @@ public:
                                              ArtDerefTables& deref_tables);
 };
 }
-#endif //ART_OPTIMISTIC_LOCK_COUPLING_N_H
