@@ -8,12 +8,12 @@
 
 
 namespace TINY_ART_OLC {
-Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
-                                          nullptr, 0, {0, 0}, deref_tables)),
+Tree::Tree(LoadKeyFunction loadKey) : root(new N256(nullptr, 0)),
                                       loadKey(loadKey) {
 }
 
-Tree::~Tree() = default;
+Tree::~Tree() {
+}
 
 ThreadInfo Tree::getThreadInfo() {
   return ThreadInfo(this->epoche);
@@ -28,6 +28,7 @@ restart:
   N* parentNode = nullptr;
   uint64_t v;
   uint32_t level = 0;
+  bool optimisticPrefixMatch = false;
 
   node = root;
   v = node->readLockOrRestart(needRestart);
@@ -39,6 +40,8 @@ restart:
         node->readUnlockOrRestart(v, needRestart);
         if (needRestart) goto restart;
         return 0;
+      case CheckPrefixResult::OptimisticMatch:
+        optimisticPrefixMatch = true;
       // fallthrough
       case CheckPrefixResult::Match:
         if (k.getKeyLen() <= level) {
@@ -57,7 +60,7 @@ restart:
           if (needRestart) goto restart;
 
           TID tid = N::getLeaf(node);
-          if (level < k.getKeyLen() - 1) {
+          if (level < k.getKeyLen() - 1 || optimisticPrefixMatch) {
             return checkKey(tid, k);
           }
           return tid;
@@ -87,9 +90,9 @@ bool Tree::lookupRange(const Key& start, const Key& end, Key& continueKey,
   }
   EpocheGuard epocheGuard(threadEpocheInfo);
   TID toContinue = 0;
-  std::function<void(const N*)>
-      copy = [&result, &resultSize, &resultsFound, &toContinue, &copy
-          ](const N* node) {
+  std::function<void(const N *)>
+  copy = [&result, &resultSize, &resultsFound, &toContinue, &copy
+      ](const N* node) {
         if (N::isLeaf(node)) {
           if (resultsFound == resultSize) {
             toContinue = N::getLeaf(node);
@@ -110,10 +113,10 @@ bool Tree::lookupRange(const Key& start, const Key& end, Key& continueKey,
           }
         }
       };
-  std::function<void(N*, uint8_t, uint32_t, const N*, uint64_t)>
-      findStart = [&copy, &start, &findStart, &toContinue, this](
-          N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
-          uint64_t vp) {
+  std::function<void(N *, uint8_t, uint32_t, const N *, uint64_t)>
+  findStart = [&copy, &start, &findStart, &toContinue, this](
+      N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
+      uint64_t vp) {
         if (N::isLeaf(node)) {
           copy(node);
           return;
@@ -182,10 +185,10 @@ bool Tree::lookupRange(const Key& start, const Key& end, Key& continueKey,
             break;
         }
       };
-  std::function<void(N*, uint8_t, uint32_t, const N*, uint64_t)>
-      findEnd = [&copy, &end, &toContinue, &findEnd, this](
-          N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
-          uint64_t vp) {
+  std::function<void(N *, uint8_t, uint32_t, const N *, uint64_t)>
+  findEnd = [&copy, &end, &toContinue, &findEnd, this](
+      N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
+      uint64_t vp) {
         if (N::isLeaf(node)) {
           return;
         }
@@ -335,9 +338,9 @@ bool Tree::lookupRange(const Key& start, TID result[],
                        ThreadInfo& threadEpocheInfo) const {
   EpocheGuard epocheGuard(threadEpocheInfo);
   TID toContinue = 0;
-  std::function<void(const N*)>
-      copy = [&result, &resultSize, &resultsFound, &toContinue, &copy
-          ](const N* node) {
+  std::function<void(const N *)>
+  copy = [&result, &resultSize, &resultsFound, &toContinue, &copy
+      ](const N* node) {
         if (N::isLeaf(node)) {
           if (resultsFound == resultSize) {
             toContinue = N::getLeaf(node);
@@ -358,10 +361,10 @@ bool Tree::lookupRange(const Key& start, TID result[],
           }
         }
       };
-  std::function<void(N*, uint8_t, uint32_t, const N*, uint64_t)>
-      findStart = [&copy, &start, &findStart, &toContinue, this](
-          N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
-          uint64_t vp) {
+  std::function<void(N *, uint8_t, uint32_t, const N *, uint64_t)>
+  findStart = [&copy, &start, &findStart, &toContinue, this](
+      N* node, uint8_t nodeK, uint32_t level, const N* parentNode,
+      uint64_t vp) {
         if (N::isLeaf(node)) {
           copy(node);
           return;
@@ -638,6 +641,8 @@ restart:
         node->readUnlockOrRestart(v, needRestart);
         if (needRestart) goto restart;
         return;
+      case CheckPrefixResult::OptimisticMatch:
+      // fallthrough
       case CheckPrefixResult::Match: {
         nodeKey = k[level];
         nextNode = N::getChild(nodeKey, node);
@@ -720,6 +725,10 @@ inline typename Tree::CheckPrefixResult Tree::checkPrefix(
         return CheckPrefixResult::NoMatch;
       }
       ++level;
+    }
+    if (n->getPrefixLength() > maxStoredPrefixLength) {
+      level = level + (n->getPrefixLength() - maxStoredPrefixLength);
+      return CheckPrefixResult::OptimisticMatch;
     }
   }
   return CheckPrefixResult::Match;
