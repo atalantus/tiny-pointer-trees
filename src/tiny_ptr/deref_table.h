@@ -54,7 +54,8 @@ class DerefTable {
                 "DerefTable requires T to be at least 1 byte in size to store free slot index")
   ;
   static_assert(std::is_trivially_destructible_v<TObject>,
-                "DerefTable requires trivially destructible TObject because entries are managed as raw storage");
+                "DerefTable requires trivially destructible TObject because entries are managed as raw storage")
+  ;
 
   // TODO: Technically if we have a large STinyPtr value the maximum needed type here might be smaller than
   //  TTinyPtrValue
@@ -93,6 +94,7 @@ private:
     struct EntryStorage {
       alignas(TObject) std::byte bytes[sizeof(TObject)];
     };
+
     std::array<EntryStorage, ENTRIES_PER_BIN_COUNT> entries{};
 
     [[nodiscard]] BucketIndexT get_next_free_slot_index(
@@ -138,7 +140,7 @@ public:
   DerefTable& operator=(DerefTable&& other) noexcept {
     if (this != &other) {
       this->~DerefTable();
-      new (this) DerefTable(std::move(other));
+      new(this) DerefTable(std::move(other));
     }
     return *this;
   }
@@ -159,12 +161,14 @@ public:
    *
    * This operation is thread-safe.
    *
-   * @param h A pair of hash values from the first and second hash function.
+   * @param h The hash values associated with the tiny pointer.
    * @param special An optional special value to be stored in the tinyptr_t (e.g., for pointer tagging).
    * @return A pair of a tinyptr_t and a pointer to the newly allocated object.
    */
-  std::pair<TinyPtrT, TObject*> allocate(std::pair<uint64_t, uint64_t> h,
-                                         TTinyPtrT special = 0);
+  std::pair<TinyPtrT, TObject*> allocate(TinyPtrHashes h,
+                                         TTinyPtrT special = 0) {
+    return allocate_impl(h, special, ZERO_NEW_ALLOCATED_MEMORY);
+  }
 
   /**
    * "Frees" the object pointed to by the given tinyptr_t and the hash values.
@@ -176,28 +180,46 @@ public:
    * This operation is thread-safe.
    *
    * @param tinyptr The tiny pointer to free.
-   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
+   * @param h The hash values associated with the tiny pointer.
    */
-  void free(TinyPtrT tinyptr, std::pair<uint64_t, uint64_t> h);
+  void free(TinyPtrT tinyptr, TinyPtrHashes h);
 
   /**
    * "Dereferences" a given tiny pointer and returns a pointer to the object that it points to.
    * @param tinyptr The tiny pointer.
-   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
+   * @param h The hash values associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
-  TObject* dereference(TinyPtrT tinyptr, std::pair<uint64_t, uint64_t> h);
+  TObject* dereference(TinyPtrT tinyptr, TinyPtrHashes h);
 
   /**
    * "Dereferences" a given tiny pointer and returns a pointer to the object that it points to.
    * @param tinyptr The tiny pointer.
-   * @param h A pair of hash values from the first and second hash function associated with the tiny pointer.
+   * @param h The hash values associated with the tiny pointer.
    * @return A pointer to the object pointed at by the tiny pointer.
    */
   const TObject* dereference(TinyPtrT tinyptr,
-                             std::pair<uint64_t, uint64_t> h) const;
+                             TinyPtrHashes h) const;
+
+  /**
+   * "Moves" the object referenced by a tiny pointer to a new tiny pointer.
+   *
+   * Note that the old tiny pointer becomes invalid and using it after this
+   * operation is equivalent to a use-after-free.
+   *
+   * @param cur The tiny pointer.
+   * @param h The hash values associated with the tiny pointer.
+   * @param new_h The hash values that will be associated with the new tiny pointer.
+   * @return A pair of the new tiny pointer and the new pointer to the moved object.
+   */
+  std::pair<TinyPtrT, TObject*> move(std::pair<TinyPtrT, TObject*> cur, TinyPtrHashes h,
+                                     TinyPtrHashes new_h);
 
 private:
+  std::pair<TinyPtrT, TObject*> allocate_impl(TinyPtrHashes h,
+                                              TTinyPtrT special,
+                                              bool zero_memory);
+
   TObject* get_data_object(size_t data_table_index, size_t object_index);
 
   const TObject* get_data_object(size_t data_table_index,
@@ -253,8 +275,8 @@ inline void throw_fill_factor_exception(uint32_t size, uint32_t capacity) {
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
-DerefTable<TObject, TTinyPtr, STinyPtr>::allocate(
-    const std::pair<uint64_t, uint64_t> h, const TTinyPtr special) {
+DerefTable<TObject, TTinyPtr, STinyPtr>::allocate_impl(
+    const TinyPtrHashes h, const TTinyPtr special, bool zero_memory) {
   if (_size.load(std::memory_order::relaxed) >= _capacity) {
     throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
                                 _capacity);
@@ -309,7 +331,7 @@ retry: {
 
     _size.fetch_add(1, std::memory_order::relaxed);
 
-    if constexpr (ZERO_NEW_ALLOCATED_MEMORY) {
+    if (zero_memory) {
       memset(&object_entry, 0, sizeof(TObject));
     }
 
@@ -319,7 +341,7 @@ retry: {
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
-    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) {
+    const TinyPtrT tinyptr, const TinyPtrHashes h) {
   const uint64_t hash = tinyptr.hash_fn() ? h.second : h.first;
   TTinyPtr index = tinyptr.index();
   const auto h_index = _ht_prime.mod(hash);
@@ -341,14 +363,14 @@ void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
-    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) {
+    const TinyPtrT tinyptr, const TinyPtrHashes h) {
   return const_cast<TObject*>(static_cast<const DerefTable*>(this)->dereference(
       tinyptr, h));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
-    const TinyPtrT tinyptr, const std::pair<uint64_t, uint64_t> h) const {
+    const TinyPtrT tinyptr, const TinyPtrHashes h) const {
   if (tinyptr == TinyPtrT::null) { return nullptr; }
   if (tinyptr == TinyPtrT::tagged) {
     throw std::runtime_error("Cannot dereference tagged tinyptr");
@@ -358,6 +380,31 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
   const TTinyPtr index = tinyptr.index();
 
   return get_data_object(_ht_prime.mod(hash), index);
+}
+
+template <typename TObject, std::unsigned_integral TTinyPtrT, unsigned STinyPtr>
+std::pair<typename DerefTable<TObject, TTinyPtrT, STinyPtr>::TinyPtrT, TObject*>
+DerefTable<TObject, TTinyPtrT, STinyPtr>::move(std::pair<TinyPtrT, TObject*> cur,
+                                               TinyPtrHashes h,
+                                               TinyPtrHashes new_h) {
+  if (cur.first == TinyPtrT::null) { return {TinyPtrT::null, nullptr}; }
+  if (cur.first == TinyPtrT::tagged) {
+    throw std::runtime_error("Cannot move tagged tinyptr");
+  }
+
+  // check if the object needs to move at all for the new hash values
+  auto h_bit = cur.first.hash_fn();
+  if ((!h_bit && h.first == new_h.first) || (
+        h_bit && h.second == new_h.second)) {
+    return cur;
+  }
+
+  auto new_moved = allocate_impl(new_h, cur.first.special(), false);
+  std::memcpy(new_moved.second, cur.second, sizeof(TObject));
+
+  free(cur.first, h);
+
+  return new_moved;
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
@@ -373,5 +420,6 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::get_data_object(
     size_t data_table_index,
     size_t object_index) const {
   // convert TinyPtr to object pointer without any memory lookups!
-  return reinterpret_cast<const TObject*>(&data_table[data_table_index].entries[object_index]);
+  return reinterpret_cast<const TObject*>(&data_table[data_table_index].entries[
+    object_index]);
 }

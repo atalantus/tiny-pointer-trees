@@ -18,24 +18,30 @@
  */
 template <std::unsigned_integral T = uint8_t, unsigned S = 0>
 struct TinyPtr {
-  static_assert((sizeof(T) * 8) > S + 1 && "there must be at least one bit left for the index");
+  static_assert(
+      (sizeof(T) * 8) > S + 1 &&
+      "there must be at least one bit left for the index");
 
-  using value_type             = T;
+  using value_type = T;
   static constexpr unsigned SB = S;
 
   T value;
 
-  constexpr TinyPtr() : value(0) {}
+  constexpr TinyPtr() : value(0) {
+  }
 
-  explicit constexpr TinyPtr(const T value) : value(value) {}
+  explicit constexpr TinyPtr(const T value) : value(value) {
+  }
 
   constexpr TinyPtr(const T index, const bool h)
-      : value(((index + 1) << (1 + S)) | h) /* plus 1 preserve null and tagged tinyptr */ {
+    : value(((index + 1) << (1 + S)) | h)
+  /* plus 1 preserve null and tagged tinyptr */ {
     assert(index < (1 << (sizeof(T) * 8 - S - 1)) - 1);
   }
 
   constexpr TinyPtr(const T index, const T special, const bool h)
-      : value(((index + 1) << (1 + S)) | (special << 1) | h) /* plus 1 preserve null and tagged tinyptr */ {
+    : value(((index + 1) << (1 + S)) | (special << 1) | h)
+  /* plus 1 preserve null and tagged tinyptr */ {
     assert(index < (1 << (sizeof(T) * 8 - S - 1)) - 1);
     assert(special < (1 << S));
   }
@@ -45,22 +51,33 @@ struct TinyPtr {
 
   operator bool() const { return value != 0; }
 
-  bool operator==(const TinyPtr &other) const { return value == other.value; }
+  bool operator==(const TinyPtr& other) const { return value == other.value; }
 
-  bool operator!=(const TinyPtr &other) const { return value != other.value; }
+  bool operator!=(const TinyPtr& other) const { return value != other.value; }
 
+  /**
+   * Returns which hash value is used by this tiny pointer.
+   * @return False if the first hash value is used, true if the second hash value is used.
+   */
   [[nodiscard]] bool hash_fn() const {
-    assert(*this != TinyPtr::null && *this != TinyPtr::tagged && "hash_fn() called on null/tagged tinyptr");
+    assert(
+        *this != TinyPtr::null && *this != TinyPtr::tagged &&
+        "hash_fn() called on null/tagged tinyptr");
     return value & 1;
   }
 
   [[nodiscard]] T index() const {
-    assert(*this != TinyPtr::null && *this != TinyPtr::tagged && "index() called on null/tagged tinyptr");
-    return (value >> (1 + S)) - 1; /* minus 1 to preserve null and tagged tinyptr */
+    assert(
+        *this != TinyPtr::null && *this != TinyPtr::tagged &&
+        "index() called on null/tagged tinyptr");
+    /* minus 1 to preserve null and tagged tinyptr */
+    return (value >> (1 + S)) - 1;
   }
 
   [[nodiscard]] T special() const {
-    assert(*this != TinyPtr::null && *this != TinyPtr::tagged && "special() called on null/tagged tinyptr");
+    assert(
+        *this != TinyPtr::null && *this != TinyPtr::tagged &&
+        "special() called on null/tagged tinyptr");
     return (value >> 1) & ((1 << S) - 1);
   }
 };
