@@ -80,6 +80,7 @@ restart:
   }
 }
 
+/*
 bool Tree::lookupRange(const Key& start, const Key& end, Key& continueKey,
                        TID result[],
                        std::size_t resultSize, std::size_t& resultsFound,
@@ -507,7 +508,7 @@ restart:
 
   return false;
 }
-
+*/
 
 TID Tree::checkKey(const TID tid, const Key& k) const {
   Key kt;
@@ -638,6 +639,7 @@ restart:
   }
 }
 
+/*
 void Tree::remove(const Key& k, TID tid, ThreadInfo& threadInfo) {
   EpocheGuard epocheGuard(threadInfo);
 restart:
@@ -734,6 +736,7 @@ restart:
     }
   }
 }
+*/
 
 inline typename Tree::CheckPrefixResult Tree::checkPrefix(
     const N* n, const Key& k, uint32_t& level) {
