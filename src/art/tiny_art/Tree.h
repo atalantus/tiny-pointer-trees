@@ -25,7 +25,6 @@ public:
   enum class CheckPrefixResult : uint8_t {
     Match,
     NoMatch,
-    OptimisticMatch
   };
 
   enum class CheckPrefixPessimisticResult : uint8_t {
