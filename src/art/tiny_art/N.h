@@ -109,11 +109,13 @@ public:
 
   static ArtTinyPtr getChild(const uint8_t k, const N* node);
 
-  static void insertAndUnlock(ArtTinyPtr node, std::pair<uint64_t, uint64_t> h,
+  static void insertAndUnlock(N* node,
                               ArtDerefTables& deref_tables, uint64_t v,
                               N* parentNode, uint64_t parentVersion,
                               uint8_t keyParent,
-                              uint8_t key, ArtTinyPtr val, bool& needRestart,
+                              uint8_t key,
+                              std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal,
+                              bool& needRestart,
                               ThreadInfo& threadInfo);
 
   static bool change(N* node, uint8_t key, ArtTinyPtr val);
@@ -144,7 +146,7 @@ public:
   static std::pair<ArtTinyPtr, uint8_t> getAnyChild(const N* n);
 
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
-                            ArtDerefTables deref_tables, bool &needRestart);
+                            ArtDerefTables deref_tables, bool& needRestart);
 
   static void deleteNode(ArtTinyPtr node, TinyPtrHashes h,
                          ArtDerefTables& deref_tables);
@@ -153,11 +155,12 @@ public:
       N* node, const uint8_t k);
 
   template <typename curN, typename biggerN>
-  static void insertGrow(curN* n, std::pair<uint64_t, uint64_t> h,
+  static void insertGrow(curN* n,
                          ArtDerefTables& deref_tables, uint64_t v,
                          N* parentNode,
                          uint64_t parentVersion, uint8_t keyParent, uint8_t key,
-                         ArtTinyPtr val, bool& needRestart,
+                         std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal,
+                         bool& needRestart,
                          ThreadInfo& threadInfo);
 
   template <typename curN, typename smallerN>

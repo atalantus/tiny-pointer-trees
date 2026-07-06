@@ -523,8 +523,10 @@ void Tree::insert(const Key& k, TID tid, ThreadInfo& epocheInfo) {
 restart:
   bool needRestart = false;
 
+  ArtTinyPtr nodeTinyPtr;
   N* node = nullptr;
-  N* nextNode = root;
+  ArtTinyPtr nextNodeTinyPtr = root.first;
+  N* nextNode = root.second;
   N* parentNode = nullptr;
   uint8_t parentKey, nodeKey = 0;
   uint64_t parentVersion = 0;
@@ -534,6 +536,7 @@ restart:
     parentNode = node;
     parentKey = nodeKey;
     node = nextNode;
+    nodeTinyPtr = nextNodeTinyPtr;
     auto v = node->readLockOrRestart(needRestart);
     if (needRestart) goto restart;
 
@@ -557,14 +560,18 @@ restart:
           goto restart;
         }
         // 1) Create new node which will be parent of node, Set common prefix, level to this node
-        auto newNode = new N4(node->getPrefix(), nextLevel - level);
+        auto newNode = N4::Create(node->getPrefix(), nextLevel - level,
+                                  address_hash(parentNode, parentKey),
+                                  deref_tables);
+        auto newLeaf = Leaf::Create(
+            tid, address_hash(newNode.second, k[nextLevel]), deref_tables);
 
         // 2)  add node and (tid, *k) as children
-        newNode->insert(k[nextLevel], N::setLeaf(tid));
-        newNode->insert(nonMatchingKey, node);
+        newNode.second->insert(k[nextLevel], newLeaf.first);
+        newNode.second->insert(nonMatchingKey, nodeTinyPtr);
 
         // 3) upgradeToWriteLockOrRestart, update parentNode to point to the new node, unlock
-        N::change(parentNode, parentKey, newNode);
+        N::change(parentNode, parentKey, newNode.first);
         parentNode->writeUnlock();
 
         // 4) update prefix of node, unlock
@@ -579,13 +586,18 @@ restart:
     }
     level = nextLevel;
     nodeKey = k[level];
-    nextNode = N::getChild(nodeKey, node);
+    nextNodeTinyPtr = N::getChild(nodeKey, node);
     node->checkOrRestart(v, needRestart);
     if (needRestart) goto restart;
 
-    if (nextNode == nullptr) {
-      N::insertAndUnlock(node, v, parentNode, parentVersion, parentKey, nodeKey,
-                         N::setLeaf(tid), needRestart, epocheInfo);
+    if (nextNodeTinyPtr == ArtTinyPtr::null) {
+      auto generateVal = [&](N* parentNode, uint8_t parentKey) {
+        return Leaf::Create(tid, address_hash(parentNode, parentKey),
+                            deref_tables).first;
+      };
+      N::insertAndUnlock(node, deref_tables, v, parentNode,
+                         parentVersion, parentKey, nodeKey,
+                         generateVal, needRestart, epocheInfo);
       if (needRestart) goto restart;
       return;
     }
@@ -595,12 +607,13 @@ restart:
       if (needRestart) goto restart;
     }
 
-    if (N::isLeaf(nextNode)) {
+    if (N::isLeaf(nextNodeTinyPtr)) {
       node->upgradeToWriteLockOrRestart(v, needRestart);
       if (needRestart) goto restart;
 
       Key key;
-      loadKey(N::getLeaf(nextNode), key);
+      loadKey(N::getLeaf(nextNodeTinyPtr, address_hash(node, nodeKey),
+                         deref_tables), key);
 
       level++;
       uint32_t prefixLength = 0;
@@ -608,13 +621,18 @@ restart:
         prefixLength++;
       }
 
-      auto n4 = new N4(&k[level], prefixLength);
-      n4->insert(k[level + prefixLength], N::setLeaf(tid));
-      n4->insert(key[level + prefixLength], nextNode);
-      N::change(node, k[level - 1], n4);
+      auto n4 = N4::Create(&k[level], prefixLength,
+                           address_hash(node, k[level - 1]), deref_tables);
+      auto newLeaf = Leaf::Create(
+          tid, address_hash(n4.second, k[level + prefixLength]), deref_tables);
+      n4.second->insert(k[level + prefixLength], newLeaf.first);
+      n4.second->insert(key[level + prefixLength], nextNodeTinyPtr);
+      N::change(node, k[level - 1], n4.first);
       node->writeUnlock();
       return;
     }
+    nextNode = deref_tables.dereference(nextNodeTinyPtr,
+                                        address_hash(node, nodeKey));
     level++;
     parentVersion = v;
   }
