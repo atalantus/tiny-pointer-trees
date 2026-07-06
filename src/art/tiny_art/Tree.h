@@ -45,7 +45,7 @@ public:
     NoMatch
   };
 
-  static CheckPrefixResult checkPrefix(N* n, const Key& k, uint32_t& level);
+  static CheckPrefixResult checkPrefix(const N* n, const Key& k, uint32_t& level);
 
   static CheckPrefixPessimisticResult checkPrefixPessimistic(
       N* n, const Key& k, uint32_t& level,

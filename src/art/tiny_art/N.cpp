@@ -326,7 +326,7 @@ N* N::setLeaf(TID tid) {
 }
 
 TID N::getLeaf(const ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h,
-               ArtDerefTables& derefTables) {
+               const ArtDerefTables& derefTables) {
   assert(tinyPtr.special() == LeafS);
   return derefTables.leaf_deref_table.dereference(tinyPtr, h)->value;
 }

@@ -24,7 +24,20 @@ public:
       leaf_deref_table(ArtLeafDerefTable::Create(leaf_count)) {
   }
 
-  N* dereference(ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h) {
+  [[nodiscard]] N* dereference(ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h) {
+    switch (tinyPtr.special()) {
+      case N4S:
+        return n4_deref_table.dereference(tinyPtr, h);
+      case N16S:
+        return n16_deref_table.dereference(tinyPtr, h);
+      case N256S:
+        return n256_deref_table.dereference(tinyPtr, h);
+      default: assert(false);
+        __builtin_unreachable();
+    }
+  }
+
+  [[nodiscard]] const N* dereference(ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h) const {
     switch (tinyPtr.special()) {
       case N4S:
         return n4_deref_table.dereference(tinyPtr, h);

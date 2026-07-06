@@ -135,7 +135,7 @@ public:
   uint32_t getPrefixLength() const;
 
   static TID getLeaf(const ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h,
-                     ArtDerefTables& derefTables);
+                     const ArtDerefTables& derefTables);
 
   static bool isLeaf(const ArtTinyPtr n);
 
