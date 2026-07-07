@@ -52,35 +52,20 @@ static constexpr uint32_t maxStoredPrefixLength = 11;
 
 using Prefix = uint8_t[maxStoredPrefixLength];
 
-class N {
+class LN {
 protected:
-  N(NTypes type, const uint8_t* prefix, uint32_t prefixLength) {
-    setType(type);
-    setPrefix(prefix, prefixLength);
-  }
+  LN() = default;
 
-  N(const N&) = delete;
+  LN(const N&) = delete;
 
-  N(N&&) = delete;
+  LN(N&&) = delete;
 
   //2b type 60b version 1b lock 1b obsolete
   std::atomic<uint64_t> typeVersionLockObsolete{0b100};
   // version 1, unlocked, not obsolete
-  uint32_t prefixCount = 0;
 
-  uint8_t count = 0;
-  Prefix prefix;
-
-
-  void setType(NTypes type);
-
-  static uint64_t convertTypeToVersion(NTypes type);
 
 public:
-  NTypes getType() const;
-
-  uint32_t getCount() const;
-
   bool isLocked(uint64_t version) const;
 
   void writeLockOrRestart(bool& needRestart);
@@ -107,6 +92,34 @@ public:
     typeVersionLockObsolete.fetch_add(0b11);
   }
 
+  static bool isLeaf(const ArtTinyPtr n);
+};
+
+class N : public LN {
+protected:
+  N(NTypes type, const uint8_t* prefix, uint32_t prefixLength) {
+    setType(type);
+    setPrefix(prefix, prefixLength);
+  }
+
+  N(const N&) = delete;
+
+  N(N&&) = delete;
+
+  uint32_t prefixCount = 0;
+
+  uint8_t count = 0;
+  Prefix prefix;
+
+  void setType(NTypes type);
+
+  static uint64_t convertTypeToVersion(NTypes type);
+
+public:
+  NTypes getType() const;
+
+  uint32_t getCount() const;
+
   static ArtTinyPtr getChild(const uint8_t k, const N* node);
 
   static void insertAndUnlock(N* node,
@@ -114,7 +127,9 @@ public:
                               N* parentNode, uint64_t parentVersion,
                               uint8_t keyParent,
                               uint8_t key,
-                              std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal,
+                              std::function<ArtTinyPtr(
+                                  N* parentNode,
+                                  uint8_t parentKey)> generateVal,
                               bool& needRestart,
                               ThreadInfo& threadInfo);
 
@@ -136,13 +151,6 @@ public:
 
   uint32_t getPrefixLength() const;
 
-  static TID getLeaf(const ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h,
-                     const ArtDerefTables& derefTables);
-
-  static bool isLeaf(const ArtTinyPtr n);
-
-  static N* setLeaf(TID tid);
-
   static std::pair<ArtTinyPtr, uint8_t> getAnyChild(const N* n);
 
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
@@ -159,7 +167,8 @@ public:
                          ArtDerefTables& deref_tables, uint64_t v,
                          N* parentNode,
                          uint64_t parentVersion, uint8_t keyParent, uint8_t key,
-                         std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal,
+                         std::function<ArtTinyPtr(
+                             N* parentNode, uint8_t parentKey)> generateVal,
                          bool& needRestart,
                          ThreadInfo& threadInfo);
 
@@ -328,8 +337,11 @@ public:
                                              ArtDerefTables& deref_tables);
 };
 
-class Leaf {
+class Leaf : public LN {
 public:
+  Leaf(TID value) : value(value) {
+  }
+
   TID value;
 
   static std::pair<ArtTinyPtr, Leaf*> Create(TID tid,

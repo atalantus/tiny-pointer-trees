@@ -22,7 +22,7 @@ NTypes N::getType() const {
                                  std::memory_order_relaxed) >> 62);
 }
 
-void N::writeLockOrRestart(bool& needRestart) {
+void LN::writeLockOrRestart(bool& needRestart) {
   uint64_t version;
   version = readLockOrRestart(needRestart);
   if (needRestart) return;
@@ -31,7 +31,7 @@ void N::writeLockOrRestart(bool& needRestart) {
   if (needRestart) return;
 }
 
-void N::upgradeToWriteLockOrRestart(uint64_t& version, bool& needRestart) {
+void LN::upgradeToWriteLockOrRestart(uint64_t& version, bool& needRestart) {
   if (typeVersionLockObsolete.
     compare_exchange_strong(version, version + 0b10)) {
     version = version + 0b10;
@@ -40,7 +40,7 @@ void N::upgradeToWriteLockOrRestart(uint64_t& version, bool& needRestart) {
   }
 }
 
-void N::writeUnlock() {
+void LN::writeUnlock() {
   typeVersionLockObsolete.fetch_add(0b10);
 }
 
@@ -251,11 +251,11 @@ void N::removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
   }
 }
 
-bool N::isLocked(uint64_t version) const {
+bool LN::isLocked(uint64_t version) const {
   return ((version & 0b10) == 0b10);
 }
 
-uint64_t N::readLockOrRestart(bool& needRestart) const {
+uint64_t LN::readLockOrRestart(bool& needRestart) const {
   uint64_t version;
   version = typeVersionLockObsolete.load();
   /*        do {
@@ -270,15 +270,15 @@ uint64_t N::readLockOrRestart(bool& needRestart) const {
   //return version;
 }
 
-bool N::isObsolete(uint64_t version) {
+bool LN::isObsolete(uint64_t version) {
   return (version & 1) == 1;
 }
 
-void N::checkOrRestart(uint64_t startRead, bool& needRestart) const {
+void LN::checkOrRestart(uint64_t startRead, bool& needRestart) const {
   readUnlockOrRestart(startRead, needRestart);
 }
 
-void N::readUnlockOrRestart(uint64_t startRead, bool& needRestart) const {
+void LN::readUnlockOrRestart(uint64_t startRead, bool& needRestart) const {
   needRestart = (startRead != typeVersionLockObsolete.load());
 }
 
@@ -322,18 +322,8 @@ void N::addPrefixBefore(N* node, uint8_t key) {
 }
 
 
-bool N::isLeaf(const ArtTinyPtr n) {
+bool LN::isLeaf(const ArtTinyPtr n) {
   return n.special() == LeafS;
-}
-
-N* N::setLeaf(TID tid) {
-  return reinterpret_cast<N*>(tid | (static_cast<uint64_t>(1) << 63));
-}
-
-TID N::getLeaf(const ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h,
-               const ArtDerefTables& derefTables) {
-  assert(tinyPtr.special() == LeafS);
-  return derefTables.leaf_deref_table.dereference(tinyPtr, h)->value;
 }
 
 std::tuple<ArtTinyPtr, uint8_t> N::getSecondChild(N* node, const uint8_t key) {

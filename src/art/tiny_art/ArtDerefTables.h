@@ -24,7 +24,31 @@ public:
       leaf_deref_table(ArtLeafDerefTable::Create(leaf_count)) {
   }
 
-  [[nodiscard]] N* dereference(ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h) {
+  std::pair<ArtTinyPtr, void*> move(std::pair<ArtTinyPtr, void*> object,
+                                    TinyPtrHashes h, TinyPtrHashes new_h) {
+    const auto move_in = [&](auto& table) -> std::pair<ArtTinyPtr, void*> {
+      using T = std::remove_reference_t<decltype(table)>::ObjectT;
+      auto res = table.move({object.first, static_cast<T*>(object.second)}, h,
+                            new_h);
+      return {res.first, res.second};
+    };
+
+    switch (object.first.special()) {
+      case LeafS:
+        return move_in(leaf_deref_table);
+      case N4S:
+        return move_in(n4_deref_table);
+      case N16S:
+        return move_in(n16_deref_table);
+      case N256S:
+        return move_in(n256_deref_table);
+      default: assert(false);
+        __builtin_unreachable();
+    }
+  }
+
+  [[nodiscard]] N* dereference(ArtTinyPtr tinyPtr,
+                               std::pair<uint64_t, uint64_t> h) {
     switch (tinyPtr.special()) {
       case N4S:
         return n4_deref_table.dereference(tinyPtr, h);
@@ -37,7 +61,8 @@ public:
     }
   }
 
-  [[nodiscard]] const N* dereference(ArtTinyPtr tinyPtr, std::pair<uint64_t, uint64_t> h) const {
+  [[nodiscard]] const N* dereference(ArtTinyPtr tinyPtr,
+                                     std::pair<uint64_t, uint64_t> h) const {
     switch (tinyPtr.special()) {
       case N4S:
         return n4_deref_table.dereference(tinyPtr, h);

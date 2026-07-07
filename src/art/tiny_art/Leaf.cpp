@@ -6,7 +6,7 @@ std::pair<ArtTinyPtr, Leaf*> Leaf::Create(TID tid,
                                           const TinyPtrHashes& h,
                                           ArtDerefTables&
                                           deref_tables) {
-  auto [tinyPtr, ptr] = deref_tables.n256_deref_table.allocate(h, N256S);
+  auto [tinyPtr, ptr] = deref_tables.leaf_deref_table.allocate(h, LeafS);
   return {tinyPtr, new(ptr) Leaf(tid)};
 }
 }

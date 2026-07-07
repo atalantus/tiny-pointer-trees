@@ -63,6 +63,7 @@ class DerefTable {
 
 public:
   using TinyPtrT = TinyPtr<TTinyPtrT, STinyPtr>;
+  using ObjectT = TObject;
 
   static constexpr size_t ENTRIES_PER_BIN_COUNT =
       (1 << (sizeof(TTinyPtrT) * 8 - STinyPtr - 1)) - 1;
