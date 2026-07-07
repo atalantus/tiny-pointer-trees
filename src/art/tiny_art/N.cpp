@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #include "N.h"
+#include "Leaf.cpp"
 #include "N4.cpp"
 #include "N16.cpp"
 #include "N256.cpp"

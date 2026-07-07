@@ -39,4 +39,6 @@ target_include_directories(tiny_pointer_trees PRIVATE
         $<TARGET_PROPERTY:GTest::gtest,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
+add_subdirectory(src/art)
+
 add_subdirectory(test)

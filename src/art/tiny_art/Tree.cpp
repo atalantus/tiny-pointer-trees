@@ -8,7 +8,8 @@
 
 
 namespace TINY_ART_OLC {
-Tree::Tree(LoadKeyFunction loadKey) : root(new N256(nullptr, 0)),
+Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
+                                          nullptr, 0, {0, 0}, deref_tables)),
                                       loadKey(loadKey) {
 }
 
