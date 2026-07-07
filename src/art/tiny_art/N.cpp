@@ -374,7 +374,7 @@ void N::deleteNode(ArtTinyPtr node, TinyPtrHashes h,
 
 
 TID N::getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
-                      ArtDerefTables deref_tables, bool& needRestart) {
+                      ArtDerefTables& deref_tables, bool& needRestart) {
   std::pair<ArtTinyPtr, const N*> nextNode = n;
 
   while (true) {

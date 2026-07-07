@@ -39,7 +39,7 @@ void InsertLookupTest() {
 
 TEST(TestArt, InsertLookupTest) {
   InsertLookupTest<ART_OLC::Tree, 10>();
-  // InsertLookupTest<TINY_ART_OLC::Tree>();
+  InsertLookupTest<TINY_ART_OLC::Tree, 10>();
 }
 
 TEST(TestArt, PathCompressionTest) {

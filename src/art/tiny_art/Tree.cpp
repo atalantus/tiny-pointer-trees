@@ -546,7 +546,8 @@ restart:
 
     uint8_t nonMatchingKey;
     Prefix remainingPrefix;
-    auto res = checkPrefixPessimistic(node, k, nextLevel, nonMatchingKey,
+    auto res = checkPrefixPessimistic({nodeTinyPtr, node}, k, nextLevel,
+                                      nonMatchingKey,
                                       remainingPrefix,
                                       this->loadKey,
                                       needRestart); // increases level
@@ -761,36 +762,36 @@ inline typename Tree::CheckPrefixResult Tree::checkPrefix(
 }
 
 typename Tree::CheckPrefixPessimisticResult Tree::checkPrefixPessimistic(
-    N* n, const Key& k, uint32_t& level,
+    std::pair<ArtTinyPtr, N*> n, const Key& k, uint32_t& level,
     uint8_t& nonMatchingKey,
     Prefix& nonMatchingPrefix,
     LoadKeyFunction loadKey, bool& needRestart) {
-  if (n->hasPrefix()) {
+  if (n.second->hasPrefix()) {
     uint32_t prevLevel = level;
     Key kt;
-    for (uint32_t i = 0; i < n->getPrefixLength(); ++i) {
+    for (uint32_t i = 0; i < n.second->getPrefixLength(); ++i) {
       if (i == maxStoredPrefixLength) {
-        auto anyTID = N::getAnyChildTid(n, needRestart);
+        auto anyTID = N::getAnyChildTid(n, deref_tables, needRestart);
         if (needRestart) return CheckPrefixPessimisticResult::Match;
         loadKey(anyTID, kt);
       }
       uint8_t curKey = i >= maxStoredPrefixLength
                          ? kt[level]
-                         : n->getPrefix()[i];
+                         : n.second->getPrefix()[i];
       if (curKey != k[level]) {
         nonMatchingKey = curKey;
-        if (n->getPrefixLength() > maxStoredPrefixLength) {
+        if (n.second->getPrefixLength() > maxStoredPrefixLength) {
           if (i < maxStoredPrefixLength) {
-            auto anyTID = N::getAnyChildTid(n, needRestart);
+            auto anyTID = N::getAnyChildTid(n, deref_tables, needRestart);
             if (needRestart) return CheckPrefixPessimisticResult::Match;
             loadKey(anyTID, kt);
           }
           memcpy(nonMatchingPrefix, &kt[0] + level + 1, std::min(
-                     (n->getPrefixLength() - (level - prevLevel) - 1),
+                     (n.second->getPrefixLength() - (level - prevLevel) - 1),
                      maxStoredPrefixLength));
         } else {
-          memcpy(nonMatchingPrefix, n->getPrefix() + i + 1,
-                 n->getPrefixLength() - i - 1);
+          memcpy(nonMatchingPrefix, n.second->getPrefix() + i + 1,
+                 n.second->getPrefixLength() - i - 1);
         }
         return CheckPrefixPessimisticResult::NoMatch;
       }
@@ -801,13 +802,14 @@ typename Tree::CheckPrefixPessimisticResult Tree::checkPrefixPessimistic(
 }
 
 typename Tree::PCCompareResults Tree::checkPrefixCompare(
-    const N* n, const Key& k, uint8_t fillKey, uint32_t& level,
+    std::pair<ArtTinyPtr, const N*> n, const Key& k, uint8_t fillKey,
+    uint32_t& level,
     LoadKeyFunction loadKey, bool& needRestart) {
-  if (n->hasPrefix()) {
+  if (n.second->hasPrefix()) {
     Key kt;
-    for (uint32_t i = 0; i < n->getPrefixLength(); ++i) {
+    for (uint32_t i = 0; i < n.second->getPrefixLength(); ++i) {
       if (i == maxStoredPrefixLength) {
-        auto anyTID = N::getAnyChildTid(n, needRestart);
+        auto anyTID = N::getAnyChildTid(n, deref_tables, needRestart);
         if (needRestart) return PCCompareResults::Equal;
         loadKey(anyTID, kt);
       }
@@ -815,7 +817,7 @@ typename Tree::PCCompareResults Tree::checkPrefixCompare(
 
       uint8_t curKey = i >= maxStoredPrefixLength
                          ? kt[level]
-                         : n->getPrefix()[i];
+                         : n.second->getPrefix()[i];
       if (curKey < kLevel) {
         return PCCompareResults::Smaller;
       } else if (curKey > kLevel) {
@@ -828,13 +830,14 @@ typename Tree::PCCompareResults Tree::checkPrefixCompare(
 }
 
 typename Tree::PCEqualsResults Tree::checkPrefixEquals(
-    const N* n, uint32_t& level, const Key& start, const Key& end,
+    std::pair<ArtTinyPtr, const N*> n, uint32_t& level, const Key& start,
+    const Key& end,
     LoadKeyFunction loadKey, bool& needRestart) {
-  if (n->hasPrefix()) {
+  if (n.second->hasPrefix()) {
     Key kt;
-    for (uint32_t i = 0; i < n->getPrefixLength(); ++i) {
+    for (uint32_t i = 0; i < n.second->getPrefixLength(); ++i) {
       if (i == maxStoredPrefixLength) {
-        auto anyTID = N::getAnyChildTid(n, needRestart);
+        auto anyTID = N::getAnyChildTid(n, deref_tables, needRestart);
         if (needRestart) return PCEqualsResults::BothMatch;
         loadKey(anyTID, kt);
       }
@@ -843,7 +846,7 @@ typename Tree::PCEqualsResults Tree::checkPrefixEquals(
 
       uint8_t curKey = i >= maxStoredPrefixLength
                          ? kt[level]
-                         : n->getPrefix()[i];
+                         : n.second->getPrefix()[i];
       if (curKey > startLevel && curKey < endLevel) {
         return PCEqualsResults::Contained;
       } else if (curKey < startLevel || curKey > endLevel) {

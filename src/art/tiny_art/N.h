@@ -146,7 +146,7 @@ public:
   static std::pair<ArtTinyPtr, uint8_t> getAnyChild(const N* n);
 
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
-                            ArtDerefTables deref_tables, bool& needRestart);
+                            ArtDerefTables& deref_tables, bool& needRestart);
 
   static void deleteNode(ArtTinyPtr node, TinyPtrHashes h,
                          ArtDerefTables& deref_tables);

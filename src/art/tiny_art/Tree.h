@@ -47,18 +47,18 @@ public:
 
   static CheckPrefixResult checkPrefix(const N* n, const Key& k, uint32_t& level);
 
-  static CheckPrefixPessimisticResult checkPrefixPessimistic(
-      N* n, const Key& k, uint32_t& level,
+  CheckPrefixPessimisticResult checkPrefixPessimistic(
+      std::pair<ArtTinyPtr, N*> n, const Key& k, uint32_t& level,
       uint8_t& nonMatchingKey,
       Prefix& nonMatchingPrefix,
       LoadKeyFunction loadKey, bool& needRestart);
 
-  static PCCompareResults checkPrefixCompare(const N* n, const Key& k,
+  PCCompareResults checkPrefixCompare(std::pair<ArtTinyPtr, const N*> n, const Key& k,
                                              uint8_t fillKey, uint32_t& level,
                                              LoadKeyFunction loadKey,
                                              bool& needRestart);
 
-  static PCEqualsResults checkPrefixEquals(const N* n, uint32_t& level,
+  PCEqualsResults checkPrefixEquals(std::pair<ArtTinyPtr, const N*> n, uint32_t& level,
                                            const Key& start, const Key& end,
                                            LoadKeyFunction loadKey,
                                            bool& needRestart);
