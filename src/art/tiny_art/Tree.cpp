@@ -1,10 +1,10 @@
 #include <assert.h>
 #include <algorithm>
 #include <functional>
+#include "Key.h"
 #include "Tree.h"
 #include "N.cpp"
-#include "../Epoche.cpp"
-#include "../Key.h"
+#include "Epoche.cpp"
 
 
 namespace TINY_ART_OLC {
@@ -61,15 +61,23 @@ restart:
           parentNode->readUnlockOrRestart(v, needRestart);
           if (needRestart) goto restart;
 
-          TID tid = N::getLeaf(nodeTinyPtr, address_hash(parentNode, k[level]),
-                               deref_tables);
+          auto leaf = deref_tables.leaf_deref_table.dereference(
+              nodeTinyPtr, id_hash(parentNode->getId(), k[level]));
+          uint64_t leafV = leaf->readLockOrRestart(needRestart);
+          if (needRestart) goto restart;
+
+          TID tid = leaf->value;
           if (level < k.getKeyLen() - 1 || optimisticPrefixMatch) {
-            return checkKey(tid, k);
+            tid = checkKey(tid, k);
           }
+
+          leaf->readUnlockOrRestart(leafV, needRestart);
+          if (needRestart) goto restart;
+
           return tid;
         }
         node = deref_tables.dereference(nodeTinyPtr,
-                                        address_hash(parentNode, k[level]));
+                                        id_hash(parentNode->getId(), k[level]));
         level++;
     }
     uint64_t nv = node->readLockOrRestart(needRestart);
@@ -562,26 +570,34 @@ restart:
           parentNode->writeUnlock();
           goto restart;
         }
-        // 1) Create new node which will be parent of node, Set common prefix, level to this node
+        // 1) Create new node which will be parent of current node, Set common prefix, level to this node
         auto newNode = N4::Create(node->getPrefix(), nextLevel - level,
-                                  address_hash(parentNode, parentKey),
+                                  id_hash(parentNode->getId(), parentKey),
                                   deref_tables);
         auto newLeaf = Leaf::Create(
-            tid, address_hash(newNode.second, k[nextLevel]), deref_tables);
+            tid, id_hash(newNode.second->getId(), k[nextLevel]), deref_tables);
 
-        // 2)  add node and (tid, *k) as children
+        // 2) Relocate current node to the new parent and update prefix
+        auto newCurNode = deref_tables.relocate_node(
+            {nodeTinyPtr, node},
+            id_hash(newNode.second->getId(), nonMatchingKey));
+        newCurNode.second->setPrefix(remainingPrefix,
+                                     node->getPrefixLength() - (
+                                       (nextLevel - level) + 1));
+        newCurNode.second->writeUnlock();
+
+        // 3) Add new current node and (tid, *k) as children
         newNode.second->insert(k[nextLevel], newLeaf.first);
-        newNode.second->insert(nonMatchingKey, nodeTinyPtr);
+        newNode.second->insert(nonMatchingKey, newCurNode.first);
 
-        // 3) upgradeToWriteLockOrRestart, update parentNode to point to the new node, unlock
+        // 4) upgradeToWriteLockOrRestart, update parentNode to point to the new node, unlock
         N::change(parentNode, parentKey, newNode.first);
         parentNode->writeUnlock();
 
-        // 4) update prefix of node, unlock
-        node->setPrefix(remainingPrefix,
-                        node->getPrefixLength() - ((nextLevel - level) + 1));
-
-        node->writeUnlock();
+        // 5) Mark old node as obsolete
+        node->writeUnlockObsolete();
+        epocheInfo.getEpoche().markNodeForDeletion(
+            nodeTinyPtr, id_hash(parentNode->getId(), parentKey), epocheInfo);
         return;
       }
       case CheckPrefixPessimisticResult::Match:
@@ -595,10 +611,10 @@ restart:
 
     if (nextNodeTinyPtr == ArtTinyPtr::null) {
       auto generateVal = [&](N* parentNode, uint8_t parentKey) {
-        return Leaf::Create(tid, address_hash(parentNode, parentKey),
+        return Leaf::Create(tid, id_hash(parentNode->getId(), parentKey),
                             deref_tables).first;
       };
-      N::insertAndUnlock(node, deref_tables, v, parentNode,
+      N::insertAndUnlock(node, nodeTinyPtr, deref_tables, v, parentNode,
                          parentVersion, parentKey, nodeKey,
                          generateVal, needRestart, epocheInfo);
       if (needRestart) goto restart;
@@ -614,9 +630,14 @@ restart:
       node->upgradeToWriteLockOrRestart(v, needRestart);
       if (needRestart) goto restart;
 
+      auto nextNodeHashes = id_hash(node->getId(), nodeKey);
+      auto nextNodeLeaf = deref_tables.leaf_deref_table.dereference(
+          nextNodeTinyPtr, nextNodeHashes);
+      nextNodeLeaf->writeLockOrRestart(needRestart);
+      if (needRestart) goto restart;
+
       Key key;
-      loadKey(N::getLeaf(nextNodeTinyPtr, address_hash(node, nodeKey),
-                         deref_tables), key);
+      loadKey(nextNodeLeaf->value, key);
 
       level++;
       uint32_t prefixLength = 0;
@@ -625,17 +646,28 @@ restart:
       }
 
       auto n4 = N4::Create(&k[level], prefixLength,
-                           address_hash(node, k[level - 1]), deref_tables);
+                           id_hash(node->getId(), k[level - 1]), deref_tables);
       auto newLeaf = Leaf::Create(
-          tid, address_hash(n4.second, k[level + prefixLength]), deref_tables);
+          tid, id_hash(n4.second->getId(), k[level + prefixLength]),
+          deref_tables);
+      auto newNextNodeLeaf = Leaf::Create(nextNodeLeaf->value,
+                                          id_hash(
+                                              n4.second->getId(),
+                                              key[level + prefixLength]),
+                                          deref_tables);
+
       n4.second->insert(k[level + prefixLength], newLeaf.first);
-      n4.second->insert(key[level + prefixLength], nextNodeTinyPtr);
+      n4.second->insert(key[level + prefixLength], newNextNodeLeaf.first);
+      nextNodeLeaf->writeUnlockObsolete();
+      epocheInfo.getEpoche().markNodeForDeletion(nextNodeTinyPtr,
+                                                 nextNodeHashes, epocheInfo);
+
       N::change(node, k[level - 1], n4.first);
       node->writeUnlock();
       return;
     }
     nextNode = deref_tables.dereference(nextNodeTinyPtr,
-                                        address_hash(node, nodeKey));
+                                        id_hash(node->getId(), nodeKey));
     level++;
     parentVersion = v;
   }

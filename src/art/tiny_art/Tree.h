@@ -2,8 +2,7 @@
 
 #include "ArtDerefTables.h"
 #include "N.h"
-
-using namespace ART;
+#include "art/tiny_art/Key.h"
 
 namespace TINY_ART_OLC {
 class Tree {
@@ -19,7 +18,7 @@ private:
 
   LoadKeyFunction loadKey;
 
-  Epoche epoche{256};
+  Epoche epoche{256, deref_tables};
 
 public:
   enum class CheckPrefixResult : uint8_t {

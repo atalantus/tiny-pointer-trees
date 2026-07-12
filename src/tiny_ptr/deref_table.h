@@ -202,20 +202,6 @@ public:
   const TObject* dereference(TinyPtrT tinyptr,
                              TinyPtrHashes h) const;
 
-  /**
-   * "Moves" the object referenced by a tiny pointer to a new tiny pointer.
-   *
-   * Note that the old tiny pointer becomes invalid and using it after this
-   * operation is equivalent to a use-after-free.
-   *
-   * @param cur The tiny pointer.
-   * @param h The hash values associated with the tiny pointer.
-   * @param new_h The hash values that will be associated with the new tiny pointer.
-   * @return A pair of the new tiny pointer and the new pointer to the moved object.
-   */
-  std::pair<TinyPtrT, TObject*> move(std::pair<TinyPtrT, TObject*> cur, TinyPtrHashes h,
-                                     TinyPtrHashes new_h);
-
 private:
   std::pair<TinyPtrT, TObject*> allocate_impl(TinyPtrHashes h,
                                               TTinyPtrT special,
@@ -381,31 +367,6 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
   const TTinyPtr index = tinyptr.index();
 
   return get_data_object(_ht_prime.mod(hash), index);
-}
-
-template <typename TObject, std::unsigned_integral TTinyPtrT, unsigned STinyPtr>
-std::pair<typename DerefTable<TObject, TTinyPtrT, STinyPtr>::TinyPtrT, TObject*>
-DerefTable<TObject, TTinyPtrT, STinyPtr>::move(std::pair<TinyPtrT, TObject*> cur,
-                                               TinyPtrHashes h,
-                                               TinyPtrHashes new_h) {
-  if (cur.first == TinyPtrT::null) { return {TinyPtrT::null, nullptr}; }
-  if (cur.first == TinyPtrT::tagged) {
-    throw std::runtime_error("Cannot move tagged tinyptr");
-  }
-
-  // check if the object needs to move at all for the new hash values
-  auto h_bit = cur.first.hash_fn();
-  if ((!h_bit && h.first == new_h.first) || (
-        h_bit && h.second == new_h.second)) {
-    return cur;
-  }
-
-  auto new_moved = allocate_impl(new_h, cur.first.special(), false);
-  std::memcpy(new_moved.second, cur.second, sizeof(TObject));
-
-  free(cur.first, h);
-
-  return new_moved;
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>

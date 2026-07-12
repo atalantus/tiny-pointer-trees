@@ -25,3 +25,8 @@ inline std::pair<uint64_t, uint64_t> address_hash(
   const auto h = reinterpret_cast<uint64_t>(ptr);
   return {h + shift, h - shift};
 }
+
+inline std::pair<uint64_t, uint64_t> id_hash(
+    const uint64_t id, const uint8_t shift) {
+  return {id + shift, id - shift};
+}

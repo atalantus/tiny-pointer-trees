@@ -1,5 +1,4 @@
-#ifndef ART_KEY_H
-#define ART_KEY_H
+#pragma once
 
 #include <stdint.h>
 #include <cstring>
@@ -117,5 +116,3 @@ inline void Key::setKeyLen(KeyLen newLen) {
         data = stackKey;
     }
 }
-
-#endif // ART_KEY_H

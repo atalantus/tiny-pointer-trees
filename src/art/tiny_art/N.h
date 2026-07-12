@@ -3,13 +3,10 @@
 #include <stdint.h>
 #include <atomic>
 #include <string.h>
-#include "../Key.h"
-#include "../Epoche.h"
-#include "../../tiny_ptr/deref_table.h"
+#include "Epoche.h"
+#include "tiny_ptr/deref_table.h"
 
 using TID = uint64_t;
-
-using namespace ART;
 
 namespace TINY_ART_OLC {
 class ArtDerefTables;
@@ -51,6 +48,25 @@ enum class NTypes : uint8_t {
 static constexpr uint32_t maxStoredPrefixLength = 11;
 
 using Prefix = uint8_t[maxStoredPrefixLength];
+
+/**
+ * TODO: Check for thread-local version to avoid shared atomic 64-bit counter.
+ *  Non-(fully)-unique IDs should not be a problem here.
+ *
+ * Generates a unique, well-distributed 64-bit id for a node.
+ *
+ * A splitmix64 finalizer is applied to a strictly increasing atomic counter.
+ * Because splitmix64 is a bijection over the counter sequence the resulting
+ * ids are guaranteed to be unique (never colliding) while still being
+ * pseudo-randomly distributed across the hash space.
+ */
+inline uint64_t next_node_id() {
+  static std::atomic<uint64_t> counter{0};
+  uint64_t z = (counter += 0x9E3779B97F4A7C15ULL);
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+  return z ^ (z >> 31);
+}
 
 class LN {
 protected:
@@ -106,6 +122,8 @@ protected:
 
   N(N&&) = delete;
 
+  uint64_t id = next_node_id();
+
   uint32_t prefixCount = 0;
 
   uint8_t count = 0;
@@ -118,11 +136,13 @@ protected:
 public:
   NTypes getType() const;
 
+  uint64_t getId() const { return id; }
+
   uint32_t getCount() const;
 
   static ArtTinyPtr getChild(const uint8_t k, const N* node);
 
-  static void insertAndUnlock(N* node,
+  static void insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                               ArtDerefTables& deref_tables, uint64_t v,
                               N* parentNode, uint64_t parentVersion,
                               uint8_t keyParent,
@@ -136,7 +156,7 @@ public:
   static bool change(N* node, uint8_t key, ArtTinyPtr val);
 
   static void removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
-                              ArtDerefTables deref_tables, uint64_t v,
+                              ArtDerefTables& deref_tables, uint64_t v,
                               uint8_t key, N* parentNode,
                               uint64_t parentVersion, uint8_t keyParent,
                               bool& needRestart, ThreadInfo& threadInfo);
@@ -156,14 +176,11 @@ public:
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
                             ArtDerefTables& deref_tables, bool& needRestart);
 
-  static void deleteNode(ArtTinyPtr node, TinyPtrHashes h,
-                         ArtDerefTables& deref_tables);
-
   static std::tuple<ArtTinyPtr, uint8_t> getSecondChild(
       N* node, const uint8_t k);
 
   template <typename curN, typename biggerN>
-  static void insertGrow(curN* n,
+  static void insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
                          ArtDerefTables& deref_tables, uint64_t v,
                          N* parentNode,
                          uint64_t parentVersion, uint8_t keyParent, uint8_t key,
@@ -173,7 +190,7 @@ public:
                          ThreadInfo& threadInfo);
 
   template <typename curN, typename smallerN>
-  static void removeAndShrink(curN* n, TinyPtrHashes h,
+  static void removeAndShrink(curN* n, ArtTinyPtr nodeTinyPtr, TinyPtrHashes h,
                               ArtDerefTables& deref_tables, uint64_t v,
                               N* parentNode,
                               uint64_t parentVersion, uint8_t keyParent,

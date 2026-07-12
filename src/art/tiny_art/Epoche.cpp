@@ -1,13 +1,10 @@
-//
-// Created by florian on 22.10.15.
-//
-#ifndef EPOCHE_CPP
-#define EPOCHE_CPP
+#pragma once
 
 #include <assert.h>
 #include <iostream>
-#include "Epoche.h"
-using namespace ART;
+#include "art/tiny_art/Epoche.h"
+#include "art/tiny_art/ArtDerefTables.h"
+using namespace TINY_ART_OLC;
 
 
 inline DeletionList::~DeletionList() {
@@ -38,7 +35,7 @@ inline void DeletionList::remove(LabelDelete *label, LabelDelete *prev) {
     deleted += label->nodesCount;
 }
 
-inline void DeletionList::add(void *n, uint64_t globalEpoch) {
+inline void DeletionList::add(PendingDelete n, uint64_t globalEpoch) {
     deletitionListCount++;
     LabelDelete *label;
     if (headDeletionList != nullptr && headDeletionList->nodesCount < headDeletionList->nodes.size()) {
@@ -70,8 +67,9 @@ inline void Epoche::enterEpoche(ThreadInfo &epocheInfo) {
     epocheInfo.getDeletionList().localEpoche.store(curEpoche, std::memory_order_release);
 }
 
-inline void Epoche::markNodeForDeletion(void *n, ThreadInfo &epocheInfo) {
-    epocheInfo.getDeletionList().add(n, currentEpoche.load());
+inline void Epoche::markNodeForDeletion(TinyPtr<uint8_t, 2> node, TinyPtrHashes h,
+                                        ThreadInfo &epocheInfo) {
+    epocheInfo.getDeletionList().add({node, h}, currentEpoche.load());
     epocheInfo.getDeletionList().thresholdCounter++;
 }
 
@@ -101,7 +99,7 @@ inline void Epoche::exitEpocheAndCleanup(ThreadInfo &epocheInfo) {
 
             if (cur->epoche < oldestEpoche) {
                 for (std::size_t i = 0; i < cur->nodesCount; ++i) {
-                    operator delete(cur->nodes[i]);
+                    deref_tables.free(cur->nodes[i].first, cur->nodes[i].second);
                 }
                 deletionList.remove(cur, prev);
             } else {
@@ -128,7 +126,7 @@ inline Epoche::~Epoche() {
 
             assert(cur->epoche < oldestEpoche);
             for (std::size_t i = 0; i < cur->nodesCount; ++i) {
-                operator delete(cur->nodes[i]);
+                deref_tables.free(cur->nodes[i].first, cur->nodes[i].second);
             }
             d.remove(cur, prev);
             cur = next;
@@ -152,5 +150,3 @@ inline DeletionList &ThreadInfo::getDeletionList() const {
 inline Epoche &ThreadInfo::getEpoche() const {
     return epoche;
 }
-
-#endif //EPOCHE_CPP

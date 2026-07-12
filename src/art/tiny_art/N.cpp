@@ -83,7 +83,7 @@ bool N::change(N* node, uint8_t key, ArtTinyPtr val) {
 }
 
 template <typename curN, typename biggerN>
-void N::insertGrow(curN* n,
+void N::insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
                    ArtDerefTables& deref_tables, uint64_t v, N* parentNode,
                    uint64_t parentVersion, uint8_t keyParent, uint8_t key,
                    std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal, bool& needRestart,
@@ -110,19 +110,21 @@ void N::insertGrow(curN* n,
   }
 
   auto nBig = biggerN::Create(n->getPrefix(), n->getPrefixLength(),
-                              address_hash(parentNode, keyParent),
+                              id_hash(parentNode->getId(), keyParent),
                               deref_tables);
+  nBig.second->id = n->id;
   n->copyTo(nBig.second);
   nBig.second->insert(key, generateVal(nBig.second, key));
 
   N::change(parentNode, keyParent, nBig.first);
 
   n->writeUnlockObsolete();
-  threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
+  threadInfo.getEpoche().markNodeForDeletion(
+      nodeTinyPtr, id_hash(parentNode->getId(), keyParent), threadInfo);
   parentNode->writeUnlock();
 }
 
-void N::insertAndUnlock(N* node,
+void N::insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                         ArtDerefTables& deref_tables, uint64_t v, N* parentNode,
                         uint64_t parentVersion, uint8_t keyParent, uint8_t key,
                         std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)> generateVal,
@@ -131,24 +133,24 @@ void N::insertAndUnlock(N* node,
   switch (node->getType()) {
     case NTypes::N4: {
       auto n = static_cast<N4*>(node);
-      insertGrow<N4, N16>(n, deref_tables, v, parentNode, parentVersion,
-                          keyParent,
+      insertGrow<N4, N16>(n, nodeTinyPtr, deref_tables, v, parentNode,
+                          parentVersion, keyParent,
                           key, generateVal, needRestart,
                           threadInfo);
       break;
     }
     case NTypes::N16: {
       auto n = static_cast<N16*>(node);
-      insertGrow<N16, N256>(n, deref_tables, v, parentNode, parentVersion,
-                            keyParent,
+      insertGrow<N16, N256>(n, nodeTinyPtr, deref_tables, v, parentNode,
+                            parentVersion, keyParent,
                             key, generateVal,
                             needRestart, threadInfo);
       break;
     }
     case NTypes::N256: {
       auto n = static_cast<N256*>(node);
-      insertGrow<N256, N256>(n, deref_tables, v, parentNode, parentVersion,
-                             keyParent,
+      insertGrow<N256, N256>(n, nodeTinyPtr, deref_tables, v, parentNode,
+                             parentVersion, keyParent,
                              key, generateVal,
                              needRestart, threadInfo);
       break;
@@ -179,7 +181,8 @@ inline ArtTinyPtr N::getChild(const uint8_t k, const N* node) {
 }
 
 template <typename curN, typename smallerN>
-void N::removeAndShrink(curN* n, TinyPtrHashes h, ArtDerefTables& deref_tables,
+void N::removeAndShrink(curN* n, ArtTinyPtr nodeTinyPtr, TinyPtrHashes h,
+                        ArtDerefTables& deref_tables,
                         uint64_t v, N* parentNode,
                         uint64_t parentVersion, uint8_t keyParent, uint8_t key,
                         bool& needRestart, ThreadInfo& threadInfo) {
@@ -207,17 +210,18 @@ void N::removeAndShrink(curN* n, TinyPtrHashes h, ArtDerefTables& deref_tables,
   auto nSmall = smallerN::Create(n->getPrefix(), n->getPrefixLength(), h,
                                  deref_tables);
 
+  nSmall.second->id = n->id;
   n->copyTo(nSmall.second);
   nSmall.second->remove(key);
   N::change(parentNode, keyParent, nSmall.first);
 
   n->writeUnlockObsolete();
-  threadInfo.getEpoche().markNodeForDeletion(n, threadInfo);
+  threadInfo.getEpoche().markNodeForDeletion(nodeTinyPtr, h, threadInfo);
   parentNode->writeUnlock();
 }
 
 void N::removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
-                        ArtDerefTables deref_tables,
+                        ArtDerefTables& deref_tables,
                         uint64_t v, uint8_t key, N* parentNode,
                         uint64_t parentVersion, uint8_t keyParent,
                         bool& needRestart, ThreadInfo& threadInfo) {
@@ -226,21 +230,21 @@ void N::removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
   switch (node.special()) {
     case N4S: {
       auto n = static_cast<N4*>(node_ptr);
-      removeAndShrink<N4, N4>(n, h, deref_tables, v, parentNode, parentVersion,
-                              keyParent, key,
+      removeAndShrink<N4, N4>(n, node, h, deref_tables, v, parentNode,
+                              parentVersion, keyParent, key,
                               needRestart, threadInfo);
       break;
     }
     case N16S: {
       auto n = static_cast<N16*>(node_ptr);
-      removeAndShrink<N16, N4>(n, h, deref_tables, v, parentNode, parentVersion,
-                               keyParent, key,
+      removeAndShrink<N16, N4>(n, node, h, deref_tables, v, parentNode,
+                               parentVersion, keyParent, key,
                                needRestart, threadInfo);
       break;
     }
     case N256S: {
       auto n = static_cast<N256*>(node_ptr);
-      removeAndShrink<N256, N16>(n, h, deref_tables, v, parentNode,
+      removeAndShrink<N256, N16>(n, node, h, deref_tables, v, parentNode,
                                  parentVersion, keyParent,
                                  key, needRestart, threadInfo);
       break;
@@ -339,30 +343,6 @@ std::tuple<ArtTinyPtr, uint8_t> N::getSecondChild(N* node, const uint8_t key) {
   }
 }
 
-void N::deleteNode(ArtTinyPtr node, TinyPtrHashes h,
-                   ArtDerefTables& derefTables) {
-  switch (node.special()) {
-    case LeafS:
-      return;
-    case N4S: {
-      derefTables.n4_deref_table.free(node, h);
-      return;
-    }
-    case N16S: {
-      derefTables.n16_deref_table.free(node, h);
-      return;
-    }
-    case N256S: {
-      derefTables.n256_deref_table.free(node, h);
-      return;
-    }
-    default:
-      assert(false);
-      __builtin_unreachable();
-  }
-}
-
-
 TID N::getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
                       ArtDerefTables& deref_tables, bool& needRestart) {
   std::pair<ArtTinyPtr, const N*> nextNode = n;
@@ -380,8 +360,9 @@ TID N::getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
     assert(nextNode.first != ArtTinyPtr::null);
 
     nextNode.second = deref_tables.dereference(nextNode.first,
-                                               address_hash(
-                                                   node, anyChild.second));
+                                               id_hash(
+                                                   node->getId(),
+                                                   anyChild.second));
 
     if (isLeaf(nextNode.first)) {
       return reinterpret_cast<const Leaf*>(nextNode.second)->value;

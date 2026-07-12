@@ -1,15 +1,20 @@
-#ifndef ART_EPOCHE_H
-#define ART_EPOCHE_H
+#pragma once
 
 #include <atomic>
 #include <array>
+#include <utility>
 #include "tbb/enumerable_thread_specific.h"
 #include "tbb/combinable.h"
+#include "tiny_ptr/tiny_ptr.h"
 
-namespace ART {
+namespace TINY_ART_OLC {
+
+    class ArtDerefTables;
+
+    using PendingDelete = std::pair<TinyPtr<uint8_t, 2>, TinyPtrHashes>;
 
     struct LabelDelete {
-        std::array<void*, 32> nodes;
+        std::array<PendingDelete, 32> nodes;
         uint64_t epoche;
         std::size_t nodesCount;
         LabelDelete *next;
@@ -27,7 +32,7 @@ namespace ART {
         ~DeletionList();
         LabelDelete *head();
 
-        void add(void *n, uint64_t globalEpoch);
+        void add(PendingDelete n, uint64_t globalEpoch);
 
         void remove(LabelDelete *label, LabelDelete *prev);
 
@@ -68,15 +73,19 @@ namespace ART {
 
         size_t startGCThreshhold;
 
+        ArtDerefTables &deref_tables;
+
 
     public:
-        Epoche(size_t startGCThreshhold) : startGCThreshhold(startGCThreshhold) { }
+        Epoche(size_t startGCThreshhold, ArtDerefTables &deref_tables)
+            : startGCThreshhold(startGCThreshhold), deref_tables(deref_tables) { }
 
         ~Epoche();
 
         void enterEpoche(ThreadInfo &epocheInfo);
 
-        void markNodeForDeletion(void *n, ThreadInfo &epocheInfo);
+        void markNodeForDeletion(TinyPtr<uint8_t, 2> node, TinyPtrHashes h,
+                                 ThreadInfo &epocheInfo);
 
         void exitEpocheAndCleanup(ThreadInfo &info);
 
@@ -112,5 +121,3 @@ namespace ART {
         deletionList.localEpoche.store(std::numeric_limits<uint64_t>::max());
     }
 }
-
-#endif //ART_EPOCHE_H
