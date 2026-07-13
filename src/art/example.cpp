@@ -32,7 +32,7 @@ void multithreaded(char **argv) {
             keys[i] = (static_cast<uint64_t>(rand()) << 32) | static_cast<uint64_t>(rand());
 
     printf("operation,n,ops/s\n");
-    TINY_ART_OLC::Tree tree(loadKey);
+    TINY_ART_OLC::Tree tree(loadKey, n);
 
     // Build tree
     {

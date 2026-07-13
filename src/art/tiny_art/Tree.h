@@ -44,7 +44,8 @@ public:
     NoMatch
   };
 
-  static CheckPrefixResult checkPrefix(const N* n, const Key& k, uint32_t& level);
+  static CheckPrefixResult checkPrefix(const N* n, const Key& k,
+                                       uint32_t& level);
 
   CheckPrefixPessimisticResult checkPrefixPessimistic(
       std::pair<ArtTinyPtr, N*> n, const Key& k, uint32_t& level,
@@ -52,18 +53,22 @@ public:
       Prefix& nonMatchingPrefix,
       LoadKeyFunction loadKey, bool& needRestart);
 
-  PCCompareResults checkPrefixCompare(std::pair<ArtTinyPtr, const N*> n, const Key& k,
-                                             uint8_t fillKey, uint32_t& level,
-                                             LoadKeyFunction loadKey,
-                                             bool& needRestart);
+  PCCompareResults checkPrefixCompare(std::pair<ArtTinyPtr, const N*> n,
+                                      const Key& k,
+                                      uint8_t fillKey, uint32_t& level,
+                                      LoadKeyFunction loadKey,
+                                      bool& needRestart);
 
-  PCEqualsResults checkPrefixEquals(std::pair<ArtTinyPtr, const N*> n, uint32_t& level,
-                                           const Key& start, const Key& end,
-                                           LoadKeyFunction loadKey,
-                                           bool& needRestart);
+  PCEqualsResults checkPrefixEquals(std::pair<ArtTinyPtr, const N*> n,
+                                    uint32_t& level,
+                                    const Key& start, const Key& end,
+                                    LoadKeyFunction loadKey,
+                                    bool& needRestart);
 
 public:
   Tree(LoadKeyFunction loadKey);
+
+  Tree(LoadKeyFunction loadKey, size_t expected_node_count);
 
   Tree(const Tree&) = delete;
 

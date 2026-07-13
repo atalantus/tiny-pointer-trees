@@ -13,6 +13,13 @@ Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
                                       loadKey(loadKey) {
 }
 
+Tree::Tree(LoadKeyFunction loadKey, const size_t expected_node_count)
+  : deref_tables(expected_node_count, expected_node_count,
+                 expected_node_count, expected_node_count),
+    root(N256::Create(nullptr, 0, {0, 0}, deref_tables)),
+    loadKey(loadKey) {
+}
+
 Tree::~Tree() {
 }
 
