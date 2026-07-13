@@ -1,4 +1,5 @@
 add_executable(tiny_pointer_trees_tests
+        test_aho_corasick.cpp
         test_art.cpp
         test_tinyptr.cpp
         test_trie.cpp
@@ -11,6 +12,7 @@ target_include_directories(tiny_pointer_trees_tests PRIVATE
 target_link_libraries(tiny_pointer_trees_tests PRIVATE
         tiny_pointer_trees
         art
+        aho_corasick
         GTest::gtest_main
 )
 
