@@ -10,7 +10,11 @@ bool N16::isFull() const {
 }
 
 bool N16::isUnderfull() const {
+#ifdef USE_N64
+  return false;
+#else
   return count == 3;
+#endif
 }
 
 void N16::insert(uint8_t key, ArtTinyPtr n) {

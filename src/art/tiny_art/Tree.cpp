@@ -14,8 +14,7 @@ Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
 }
 
 Tree::Tree(LoadKeyFunction loadKey, const size_t expected_node_count)
-  : deref_tables(expected_node_count, expected_node_count,
-                 expected_node_count, expected_node_count),
+  : deref_tables(expected_node_count),
     root(N256::Create(nullptr, 0, {0, 0}, deref_tables)),
     loadKey(loadKey) {
 }
@@ -578,9 +577,10 @@ restart:
           goto restart;
         }
         // 1) Create new node which will be parent of current node, Set common prefix, level to this node
-        auto newNode = N4::Create(node->getPrefix(), nextLevel - level,
-                                  id_hash(parentNode->getId(), parentKey),
-                                  deref_tables);
+        auto newNode = InitialNode::Create(node->getPrefix(), nextLevel - level,
+                                           id_hash(
+                                               parentNode->getId(), parentKey),
+                                           deref_tables);
         auto newLeaf = Leaf::Create(
             tid, id_hash(newNode.second->getId(), k[nextLevel]), deref_tables);
 
@@ -652,8 +652,9 @@ restart:
         prefixLength++;
       }
 
-      auto n4 = N4::Create(&k[level], prefixLength,
-                           id_hash(node->getId(), k[level - 1]), deref_tables);
+      auto n4 = InitialNode::Create(&k[level], prefixLength,
+                                    id_hash(node->getId(), k[level - 1]),
+                                    deref_tables);
       auto newLeaf = Leaf::Create(
           tid, id_hash(n4.second->getId(), k[level + prefixLength]),
           deref_tables);

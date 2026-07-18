@@ -1,8 +1,7 @@
 #pragma once
 
-#include <stdint.h>
 #include <atomic>
-#include <string.h>
+#include <cstring>
 #include "Epoche.h"
 #include "tiny_ptr/deref_table.h"
 
@@ -14,20 +13,27 @@ class ArtDerefTables;
 class N;
 class N4;
 class N16;
+class N64;
 class N256;
 class Leaf;
+
+#if defined(USE_N64) && (!defined(__AVX512F__) || !defined(__AVX512BW__))
+#error "USE_N64 requires AVX-512F and AVX-512BW. Disable USE_N64 or compile with an AVX-512 target."
+#endif
 
 /**
 * In lowest-byte-first order the bits are grouped as follows:
 * | 0 | 1 2 | 3 4 5 6 7 |
 * where:
 *  - 0 indicates the hash function used
-*  - 1-2 indicate the node type (0: Leaf, 1: N4, 2: N16, 3: n256)
+*  - 1-2 indicate the node type (0: Leaf, 1: N4/N64, 2: N16, 3: n256)
 *  - 3-7 indicate the index inside the dereference table's bucket (starting at 1)
 */
 using ArtTinyPtr = TinyPtr<uint8_t, 2>;
 using ArtN4DerefTable = DerefTable<N4, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
 using ArtN16DerefTable = DerefTable<N16, ArtTinyPtr::value_type, ArtTinyPtr::SB>
+;
+using ArtN64DerefTable = DerefTable<N64, ArtTinyPtr::value_type, ArtTinyPtr::SB>
 ;
 using ArtN256DerefTable = DerefTable<
   N256, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
@@ -35,15 +41,22 @@ using ArtLeafDerefTable = DerefTable<
   Leaf, ArtTinyPtr::value_type, ArtTinyPtr::SB>;
 static constexpr uint8_t LeafS = 0;
 static constexpr uint8_t N4S = 1;
+static constexpr uint8_t N64S = 1;
 static constexpr uint8_t N16S = 2;
 static constexpr uint8_t N256S = 3;
-
 
 enum class NTypes : uint8_t {
   N4 = N4S,
   N16 = N16S,
+  N64 = N64S,
   N256 = N256S
 };
+
+#ifdef USE_N64
+using InitialNode = N16;
+#else
+using InitialNode = N4;
+#endif
 
 static constexpr uint32_t maxStoredPrefixLength = 11;
 
@@ -111,6 +124,8 @@ public:
   static bool isLeaf(const ArtTinyPtr n);
 };
 
+static_assert(sizeof(LN) == 8);
+
 class N : public LN {
 protected:
   N(NTypes type, const uint8_t* prefix, uint32_t prefixLength) {
@@ -175,9 +190,6 @@ public:
 
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
                             ArtDerefTables& deref_tables, bool& needRestart);
-
-  static std::tuple<ArtTinyPtr, uint8_t> getSecondChild(
-      N* node, const uint8_t k);
 
   template <typename curN, typename biggerN>
   static void insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
@@ -311,6 +323,69 @@ public:
                        uint32_t& childrenCount) const;
 
   static std::pair<ArtTinyPtr, N16*> Create(const uint8_t* prefix,
+                                            uint32_t prefixLength,
+                                            const TinyPtrHashes& h,
+                                            ArtDerefTables& deref_tables);
+};
+
+class N64 : public N {
+public:
+  uint8_t keys[64];
+  ArtTinyPtr children[64];
+
+  static uint8_t flipSign(uint8_t keyByte) {
+    return keyByte ^ 128;
+  }
+
+  static inline unsigned ctz(uint64_t x) {
+#ifdef __GNUC__
+    return __builtin_ctzll(x);
+#else
+    unsigned n = 0;
+    while ((x & 1) == 0) {
+      ++n;
+      x >>= 1;
+    }
+    return n;
+#endif
+  }
+
+  ArtTinyPtr const* getChildPos(uint8_t k) const;
+
+  N64(const uint8_t* prefix, uint32_t prefixLength) : N(
+      NTypes::N64,
+      prefix,
+      prefixLength) {
+    memset(keys, 0, sizeof(keys));
+    memset(children, 0, sizeof(children));
+  }
+
+  void insert(uint8_t key, ArtTinyPtr n);
+
+  template <class NODE>
+  void copyTo(NODE* n) const;
+
+  bool change(uint8_t key, ArtTinyPtr val);
+
+  ArtTinyPtr getChild(uint8_t k) const;
+
+  void remove(uint8_t k);
+
+  std::pair<ArtTinyPtr, uint8_t> getAnyChild() const;
+
+  std::tuple<ArtTinyPtr, uint8_t> getSecondChild(uint8_t key) const;
+
+  bool isFull() const;
+
+  bool isUnderfull() const;
+
+  void deleteChildren();
+
+  uint64_t getChildren(uint8_t start, uint8_t end,
+                       std::tuple<uint8_t, ArtTinyPtr>*& children,
+                       uint32_t& childrenCount) const;
+
+  static std::pair<ArtTinyPtr, N64*> Create(const uint8_t* prefix,
                                             uint32_t prefixLength,
                                             const TinyPtrHashes& h,
                                             ArtDerefTables& deref_tables);

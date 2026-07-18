@@ -55,6 +55,40 @@ TEST(TestArt, InsertLookupTest) {
   InsertLookupTest<TINY_ART_OLC::Tree, 10>();
 }
 
+#ifdef USE_N64
+TEST(TestTinyArt, N64InsertLookupAndRemove) {
+  TINY_ART_OLC::N64 node(nullptr, 0);
+
+  for (uint8_t key = 64; key > 0; --key) {
+    node.insert(key - 1, TINY_ART_OLC::ArtTinyPtr{key});
+  }
+
+  ASSERT_TRUE(node.isFull());
+  ASSERT_EQ(node.getCount(), 64);
+  for (uint8_t key = 0; key < 64; ++key) {
+    EXPECT_EQ(node.getChild(key),
+              TINY_ART_OLC::ArtTinyPtr{static_cast<uint8_t>(key + 1)});
+  }
+
+  std::array<std::tuple<uint8_t, TINY_ART_OLC::ArtTinyPtr>, 64> children;
+  auto* childrenPtr = children.data();
+  uint32_t childrenCount = 0;
+  node.getChildren(0, 63, childrenPtr, childrenCount);
+  ASSERT_EQ(childrenCount, 64);
+  for (uint8_t key = 0; key < 64; ++key) {
+    EXPECT_EQ(std::get<0>(children[key]), key);
+    EXPECT_EQ(std::get<1>(children[key]),
+              TINY_ART_OLC::ArtTinyPtr{static_cast<uint8_t>(key + 1)});
+  }
+
+  node.change(32, TINY_ART_OLC::ArtTinyPtr{200});
+  EXPECT_EQ(node.getChild(32), TINY_ART_OLC::ArtTinyPtr{200});
+  node.remove(32);
+  EXPECT_EQ(node.getChild(32), TINY_ART_OLC::ArtTinyPtr::null);
+  EXPECT_EQ(node.getCount(), 63);
+}
+#endif
+
 TEST(TestArt, StringInsertLookupTest) {
   g_keyStrings.clear();
   TINY_ART_OLC::Tree tree(loadStringKey);

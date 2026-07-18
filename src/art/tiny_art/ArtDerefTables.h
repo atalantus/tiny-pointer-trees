@@ -5,23 +5,36 @@
 namespace TINY_ART_OLC {
 class ArtDerefTables {
 public:
-  ArtN4DerefTable n4_deref_table;
   ArtN16DerefTable n16_deref_table;
+#ifdef USE_N64
+  ArtN64DerefTable n64_deref_table;
+#else
+  ArtN4DerefTable n4_deref_table;
+#endif
   ArtN256DerefTable n256_deref_table;
   ArtLeafDerefTable leaf_deref_table;
 
-  ArtDerefTables() : n4_deref_table(ArtN4DerefTable::Create(1024)),
-                     n16_deref_table(ArtN16DerefTable::Create(1024)),
-                     n256_deref_table(ArtN256DerefTable::Create(1024)),
-                     leaf_deref_table(ArtLeafDerefTable::Create(1024)) {
+  ArtDerefTables()
+#ifdef USE_N64
+    : n16_deref_table(ArtN16DerefTable::Create(1024)),
+      n64_deref_table(ArtN64DerefTable::Create(1024)),
+#else
+    : n4_deref_table(ArtN4DerefTable::Create(1024)),
+      n16_deref_table(ArtN16DerefTable::Create(1024)),
+#endif
+      n256_deref_table(ArtN256DerefTable::Create(1024)),
+      leaf_deref_table(ArtLeafDerefTable::Create(1024)) {
   }
 
-  ArtDerefTables(size_t n4_count, size_t n16_count, size_t n256_count,
-                 size_t leaf_count)
-    : n4_deref_table(ArtN4DerefTable::Create(n4_count)),
-      n16_deref_table(ArtN16DerefTable::Create(n16_count)),
-      n256_deref_table(ArtN256DerefTable::Create(n256_count)),
-      leaf_deref_table(ArtLeafDerefTable::Create(leaf_count)) {
+  explicit ArtDerefTables(size_t count)
+    : n16_deref_table(ArtN16DerefTable::Create(count)),
+#ifdef USE_N64
+      n64_deref_table(ArtN64DerefTable::Create(count)),
+#else
+      n4_deref_table(ArtN4DerefTable::Create(count)),
+#endif
+      n256_deref_table(ArtN256DerefTable::Create(count)),
+      leaf_deref_table(ArtLeafDerefTable::Create(count)) {
   }
 
   void free(ArtTinyPtr tinyPtr, TinyPtrHashes h) {
@@ -29,8 +42,13 @@ public:
       case LeafS:
         leaf_deref_table.free(tinyPtr, h);
         break;
+#ifdef USE_N64
+      case N64S:
+        n64_deref_table.free(tinyPtr, h);
+#else
       case N4S:
         n4_deref_table.free(tinyPtr, h);
+#endif
         break;
       case N16S:
         n16_deref_table.free(tinyPtr, h);
@@ -46,9 +64,15 @@ public:
   [[nodiscard]] std::pair<ArtTinyPtr, N*> relocate_node(
       std::pair<ArtTinyPtr, N*> node, TinyPtrHashes new_h) {
     switch (node.first.special()) {
+#ifdef USE_N64
+      case N64S: {
+        auto newNode = n64_deref_table.allocate(new_h, N64S);
+        memcpy(newNode.second, node.second, sizeof(N64));
+#else
       case N4S: {
         auto newNode = n4_deref_table.allocate(new_h, N4S);
         memcpy(newNode.second, node.second, sizeof(N4));
+#endif
         return newNode;
       }
       case N16S: {
@@ -69,8 +93,13 @@ public:
   [[nodiscard]] N* dereference(ArtTinyPtr tinyPtr,
                                TinyPtrHashes h) {
     switch (tinyPtr.special()) {
+#ifdef USE_N64
+      case N64S:
+        return n64_deref_table.dereference(tinyPtr, h);
+#else
       case N4S:
         return n4_deref_table.dereference(tinyPtr, h);
+#endif
       case N16S:
         return n16_deref_table.dereference(tinyPtr, h);
       case N256S:
@@ -83,8 +112,13 @@ public:
   [[nodiscard]] const N* dereference(ArtTinyPtr tinyPtr,
                                      TinyPtrHashes h) const {
     switch (tinyPtr.special()) {
+#ifdef USE_N64
+      case N64S:
+        return n64_deref_table.dereference(tinyPtr, h);
+#else
       case N4S:
         return n4_deref_table.dereference(tinyPtr, h);
+#endif
       case N16S:
         return n16_deref_table.dereference(tinyPtr, h);
       case N256S:

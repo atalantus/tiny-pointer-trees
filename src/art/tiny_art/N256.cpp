@@ -9,7 +9,11 @@ bool N256::isFull() const {
 }
 
 bool N256::isUnderfull() const {
+#ifdef USE_N64
+  return count == 53;
+#else
   return count == 37;
+#endif
 }
 
 void N256::insert(uint8_t key, ArtTinyPtr val) {
