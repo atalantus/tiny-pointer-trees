@@ -2,7 +2,7 @@
 #include <chrono>
 #include "tbb/tbb.h"
 #include "tiny_art/Tree.h"
-#include "tiny_art/Key.h"
+#include "Key.h"
 
 using namespace std;
 

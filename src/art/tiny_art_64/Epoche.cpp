@@ -1,11 +1,11 @@
 #pragma once
 
-#include <cassert>
+#include <assert.h>
 #include <iostream>
 #include "Epoche.h"
 #include "ArtDerefTables.h"
 
-using namespace TINY_ART_OLC;
+using namespace TINY_ART_64_OLC;
 
 inline DeletionList::~DeletionList() {
     assert(deletitionListCount == 0 && headDeletionList == nullptr);

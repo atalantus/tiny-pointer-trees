@@ -4,7 +4,7 @@
 #include "N.h"
 #include "../Key.h"
 
-namespace TINY_ART_OLC {
+namespace TINY_ART_256_OLC {
 class Tree {
 public:
   using LoadKeyFunction = void (*)(TID tid, Key& key);
@@ -44,26 +44,26 @@ public:
     NoMatch
   };
 
-  static CheckPrefixResult checkPrefix(const N* n, const Key& k,
+  static CheckPrefixResult checkPrefix(const N256* n, const Key& k,
                                        uint32_t& level);
 
   CheckPrefixPessimisticResult checkPrefixPessimistic(
-      std::pair<ArtTinyPtr, N*> n, const Key& k, uint32_t& level,
-      uint8_t& nonMatchingKey,
-      Prefix& nonMatchingPrefix,
-      LoadKeyFunction loadKey, bool& needRestart);
+      std::pair<ArtTinyPtr, N256*> n, const Key &k, uint32_t &level,
+      uint8_t &nonMatchingKey,
+      Prefix &nonMatchingPrefix,
+      LoadKeyFunction loadKey, bool &needRestart);
 
-  PCCompareResults checkPrefixCompare(std::pair<ArtTinyPtr, const N*> n,
-                                      const Key& k,
-                                      uint8_t fillKey, uint32_t& level,
+  PCCompareResults checkPrefixCompare(std::pair<ArtTinyPtr, const N256*> n,
+                                      const Key &k,
+                                      uint8_t fillKey, uint32_t &level,
                                       LoadKeyFunction loadKey,
-                                      bool& needRestart);
+                                      bool &needRestart);
 
-  PCEqualsResults checkPrefixEquals(std::pair<ArtTinyPtr, const N*> n,
-                                    uint32_t& level,
-                                    const Key& start, const Key& end,
+  PCEqualsResults checkPrefixEquals(std::pair<ArtTinyPtr, const N256*> n,
+                                    uint32_t &level,
+                                    const Key &start, const Key &end,
                                     LoadKeyFunction loadKey,
-                                    bool& needRestart);
+                                    bool &needRestart);
 
 public:
   Tree(LoadKeyFunction loadKey);

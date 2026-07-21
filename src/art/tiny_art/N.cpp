@@ -3,11 +3,7 @@
 
 #include "N.h"
 #include "Leaf.cpp"
-#ifdef USE_N64
-#include "N64.cpp"
-#else
 #include "N4.cpp"
-#endif
 #include "N16.cpp"
 #include "N256.cpp"
 #include "tiny_ptr/util.h"
@@ -50,22 +46,14 @@ void LN::writeUnlock() {
 
 std::pair<ArtTinyPtr, uint8_t> N::getAnyChild(const N* node) {
   switch (node->getType()) {
-#ifndef USE_N64
     case NTypes::N4: {
       auto n = static_cast<const N4*>(node);
       return n->getAnyChild();
     }
-#endif
     case NTypes::N16: {
       auto n = static_cast<const N16*>(node);
       return n->getAnyChild();
     }
-#ifdef USE_N64
-    case NTypes::N64: {
-      auto n = static_cast<const N64*>(node);
-      return n->getAnyChild();
-    }
-#endif
     case NTypes::N256: {
       auto n = static_cast<const N256*>(node);
       return n->getAnyChild();
@@ -77,22 +65,14 @@ std::pair<ArtTinyPtr, uint8_t> N::getAnyChild(const N* node) {
 
 bool N::change(N* node, uint8_t key, ArtTinyPtr val) {
   switch (node->getType()) {
-#ifndef USE_N64
     case NTypes::N4: {
       auto n = static_cast<N4*>(node);
       return n->change(key, val);
     }
-#endif
     case NTypes::N16: {
       auto n = static_cast<N16*>(node);
       return n->change(key, val);
     }
-#ifdef USE_N64
-    case NTypes::N64: {
-      auto n = static_cast<N64*>(node);
-      return n->change(key, val);
-    }
-#endif
     case NTypes::N256: {
       auto n = static_cast<N256*>(node);
       return n->change(key, val);
@@ -153,7 +133,6 @@ void N::insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                         bool& needRestart,
                         ThreadInfo& threadInfo) {
   switch (node->getType()) {
-#ifndef USE_N64
     case NTypes::N4: {
       auto n = static_cast<N4*>(node);
       insertGrow<N4, N16>(n, nodeTinyPtr, deref_tables, v, parentNode,
@@ -162,29 +141,14 @@ void N::insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                           threadInfo);
       break;
     }
-#endif
     case NTypes::N16: {
       auto n = static_cast<N16*>(node);
-#ifdef USE_N64
-      insertGrow<N16, N64>(n, nodeTinyPtr, deref_tables, v, parentNode,
-#else
       insertGrow<N16, N256>(n, nodeTinyPtr, deref_tables, v, parentNode,
-#endif
                             parentVersion, keyParent,
                             key, generateVal,
                             needRestart, threadInfo);
       break;
     }
-#ifdef USE_N64
-    case NTypes::N64: {
-      auto n = static_cast<N64*>(node);
-      insertGrow<N64, N256>(n, nodeTinyPtr, deref_tables, v, parentNode,
-                            parentVersion, keyParent,
-                            key, generateVal,
-                            needRestart, threadInfo);
-      break;
-    }
-#endif
     case NTypes::N256: {
       auto n = static_cast<N256*>(node);
       insertGrow<N256, N256>(n, nodeTinyPtr, deref_tables, v, parentNode,
@@ -201,22 +165,14 @@ void N::insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
 
 inline ArtTinyPtr N::getChild(const uint8_t k, const N* node) {
   switch (node->getType()) {
-#ifndef USE_N64
     case NTypes::N4: {
       auto n = static_cast<const N4*>(node);
       return n->getChild(k);
     }
-#endif
     case NTypes::N16: {
       auto n = static_cast<const N16*>(node);
       return n->getChild(k);
     }
-#ifdef USE_N64
-    case NTypes::N64: {
-      auto n = static_cast<const N64*>(node);
-      return n->getChild(k);
-    }
-#endif
     case NTypes::N256: {
       auto n = static_cast<const N256*>(node);
       return n->getChild(k);
@@ -274,7 +230,6 @@ void N::removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
   auto node_ptr = deref_tables.dereference(node, h);
 
   switch (node.special()) {
-#ifndef USE_N64
     case N4S: {
       auto n = static_cast<N4*>(node_ptr);
       removeAndShrink<N4, N4>(n, node, h, deref_tables, v, parentNode,
@@ -282,34 +237,16 @@ void N::removeAndUnlock(ArtTinyPtr node, TinyPtrHashes h,
                               needRestart, threadInfo);
       break;
     }
-#endif
     case N16S: {
       auto n = static_cast<N16*>(node_ptr);
-#ifdef USE_N64
-      removeAndShrink<N16, N16>(n, node, h, deref_tables, v, parentNode,
-#else
       removeAndShrink<N16, N4>(n, node, h, deref_tables, v, parentNode,
-#endif
                                parentVersion, keyParent, key,
                                needRestart, threadInfo);
       break;
     }
-#ifdef USE_N64
-    case N64S: {
-      auto n = static_cast<N64*>(node_ptr);
-      removeAndShrink<N64, N16>(n, node, h, deref_tables, v, parentNode,
-                                parentVersion, keyParent, key,
-                                needRestart, threadInfo);
-      break;
-    }
-#endif
     case N256S: {
       auto n = static_cast<N256*>(node_ptr);
-#ifdef USE_N64
-      removeAndShrink<N256, N64>(n, node, h, deref_tables, v, parentNode,
-#else
       removeAndShrink<N256, N16>(n, node, h, deref_tables, v, parentNode,
-#endif
                                  parentVersion, keyParent,
                                  key, needRestart, threadInfo);
       break;
@@ -411,14 +348,16 @@ TID N::getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
 
     assert(nextNode.first != ArtTinyPtr::null);
 
-    nextNode.second = deref_tables.dereference(nextNode.first,
-                                               id_hash(
-                                                   node->getId(),
-                                                   anyChild.second));
+    auto next_node_h = id_hash(
+        node->getId(),
+        anyChild.second);
 
     if (isLeaf(nextNode.first)) {
-      return reinterpret_cast<const Leaf*>(nextNode.second)->value;
+      return reinterpret_cast<const Leaf*>(deref_tables.leaf_deref_table.
+        dereference(nextNode.first, next_node_h))->value;
     }
+
+    nextNode.second = deref_tables.dereference(nextNode.first, next_node_h);
   }
 }
 
@@ -426,22 +365,14 @@ uint64_t N::getChildren(const N* node, uint8_t start, uint8_t end,
                         std::tuple<uint8_t, ArtTinyPtr> children[],
                         uint32_t& childrenCount) {
   switch (node->getType()) {
-#ifndef USE_N64
     case NTypes::N4: {
       auto n = static_cast<const N4*>(node);
       return n->getChildren(start, end, children, childrenCount);
     }
-#endif
     case NTypes::N16: {
       auto n = static_cast<const N16*>(node);
       return n->getChildren(start, end, children, childrenCount);
     }
-#ifdef USE_N64
-    case NTypes::N64: {
-      auto n = static_cast<const N64*>(node);
-      return n->getChildren(start, end, children, childrenCount);
-    }
-#endif
     case NTypes::N256: {
       auto n = static_cast<const N256*>(node);
       return n->getChildren(start, end, children, childrenCount);

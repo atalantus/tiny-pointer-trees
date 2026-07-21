@@ -4,7 +4,7 @@
 #include "N.h"
 #include "../Key.h"
 
-namespace TINY_ART_OLC {
+namespace TINY_ART_64_OLC {
 class Tree {
 public:
   using LoadKeyFunction = void (*)(TID tid, Key& key);

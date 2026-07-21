@@ -2,15 +2,7 @@
 #include "N.h"
 #include "ArtDerefTables.h"
 
-namespace TINY_ART_OLC {
-bool N256::isFull() const {
-  return false;
-}
-
-bool N256::isUnderfull() const {
-  return count == 37;
-}
-
+namespace TINY_ART_256_OLC {
 void N256::insert(uint8_t key, ArtTinyPtr val) {
   children[key] = val;
   count++;
@@ -43,7 +35,7 @@ std::pair<ArtTinyPtr, uint8_t> N256::getAnyChild() const {
   std::pair<ArtTinyPtr, uint8_t> anyChild = {ArtTinyPtr::null, 0};
   for (uint64_t i = 0; i < 256; ++i) {
     if (children[i] != ArtTinyPtr::null) {
-      if (N::isLeaf(children[i])) {
+      if (isLeaf(children[i])) {
         return {children[i], i};
       } else {
         anyChild = {children[i], i};

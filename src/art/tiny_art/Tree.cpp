@@ -1,11 +1,13 @@
-#include <assert.h>
+#include "Tree.h"
+
+#include <cassert>
+
 #include <algorithm>
 #include <functional>
-#include "Key.h"
-#include "Tree.h"
+
 #include "N.cpp"
 #include "Epoche.cpp"
-
+#include "../Key.h"
 
 namespace TINY_ART_OLC {
 Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(

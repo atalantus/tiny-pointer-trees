@@ -1,12 +1,9 @@
 add_library(art STATIC
         ARTSynchronized/OptimisticLockCoupling/Tree.cpp
         tiny_art/Tree.cpp
+        tiny_art_64/Tree.cpp
+        tiny_art_256/Tree.cpp
 )
-
-option(USE_N64 "Enable AVX-512 N64 nodes in tiny ART" OFF)
-if (USE_N64)
-    target_compile_definitions(art PUBLIC USE_N64)
-endif()
 
 target_include_directories(art PUBLIC
         ${CMAKE_SOURCE_DIR}/src

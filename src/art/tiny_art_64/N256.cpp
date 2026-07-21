@@ -1,14 +1,15 @@
+#include <assert.h>
 #include <algorithm>
 #include "N.h"
 #include "ArtDerefTables.h"
 
-namespace TINY_ART_OLC {
+namespace TINY_ART_64_OLC {
 bool N256::isFull() const {
   return false;
 }
 
 bool N256::isUnderfull() const {
-  return count == 37;
+  return count == 53;
 }
 
 void N256::insert(uint8_t key, ArtTinyPtr val) {

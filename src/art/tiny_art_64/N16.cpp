@@ -4,13 +4,13 @@
 #include "ArtDerefTables.h"
 #include <emmintrin.h> // x86 SSE intrinsics
 
-namespace TINY_ART_OLC {
+namespace TINY_ART_64_OLC {
 bool N16::isFull() const {
   return count == 16;
 }
 
 bool N16::isUnderfull() const {
-  return count == 3;
+  return false;
 }
 
 void N16::insert(uint8_t key, ArtTinyPtr n) {

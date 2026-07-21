@@ -5,7 +5,7 @@
 #include "Epoche.h"
 #include "ArtDerefTables.h"
 
-using namespace TINY_ART_OLC;
+using namespace TINY_ART_256_OLC;
 
 inline DeletionList::~DeletionList() {
     assert(deletitionListCount == 0 && headDeletionList == nullptr);
@@ -67,7 +67,7 @@ inline void Epoche::enterEpoche(ThreadInfo &epocheInfo) {
     epocheInfo.getDeletionList().localEpoche.store(curEpoche, std::memory_order_release);
 }
 
-inline void Epoche::markNodeForDeletion(TinyPtr<uint8_t, 2> node, TinyPtrHashes h,
+inline void Epoche::markNodeForDeletion(TinyPtr<uint8_t, 1> node, TinyPtrHashes h,
                                         ThreadInfo &epocheInfo) {
     epocheInfo.getDeletionList().add({node, h}, currentEpoche.load());
     epocheInfo.getDeletionList().thresholdCounter++;
