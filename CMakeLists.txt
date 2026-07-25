@@ -4,16 +4,34 @@ project(tiny-pointer-trees VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Compiler Flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fPIC -fasynchronous-unwind-tables -march=native")
+add_compile_options(
+        -fPIC
+        -fasynchronous-unwind-tables
+)
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-Wno-stringop-overflow)
 endif()
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(
+            -O3
+            -march=native
+            -fomit-frame-pointer
+            -ffast-math
+    )
+
+    # Enable LTO / IPO safely
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported)
+    if(ipo_supported)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    endif()
+endif()
 
 enable_testing()
 
