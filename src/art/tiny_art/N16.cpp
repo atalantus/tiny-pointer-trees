@@ -22,7 +22,7 @@ void N16::insert(uint8_t key, ArtTinyPtr n) {
   unsigned pos = bitfield ? ctz(bitfield) : count;
   memmove(keys + pos + 1, keys + pos, count - pos);
   memmove(children + pos + 1, children + pos,
-          (count - pos) * sizeof(uintptr_t));
+          (count - pos) * sizeof(ArtTinyPtr));
   keys[pos] = keyByteFlipped;
   children[pos] = n;
   count++;
@@ -68,7 +68,7 @@ void N16::remove(uint8_t k) {
   assert(leafPlace != nullptr);
   std::size_t pos = leafPlace - children;
   memmove(keys + pos, keys + pos + 1, count - pos - 1);
-  memmove(children + pos, children + pos + 1, (count - pos - 1) * sizeof(N*));
+  memmove(children + pos, children + pos + 1, (count - pos - 1) * sizeof(ArtTinyPtr));
   count--;
   assert(getChild(k) == ArtTinyPtr::null);
 }

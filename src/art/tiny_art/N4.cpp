@@ -17,7 +17,7 @@ void N4::insert(uint8_t key, ArtTinyPtr n) {
   unsigned pos;
   for (pos = 0; (pos < count) && (keys[pos] < key); pos++);
   memmove(keys + pos + 1, keys + pos, count - pos);
-  memmove(children + pos + 1, children + pos, (count - pos) * sizeof(N*));
+  memmove(children + pos + 1, children + pos, (count - pos) * sizeof(ArtTinyPtr));
   keys[pos] = key;
   children[pos] = n;
   count++;
@@ -54,7 +54,7 @@ void N4::remove(uint8_t k) {
   for (uint32_t i = 0; i < count; ++i) {
     if (keys[i] == k) {
       memmove(keys + i, keys + i + 1, count - i - 1);
-      memmove(children + i, children + i + 1, (count - i - 1) * sizeof(N*));
+      memmove(children + i, children + i + 1, (count - i - 1) * sizeof(ArtTinyPtr));
       count--;
       return;
     }
