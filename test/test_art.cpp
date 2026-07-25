@@ -132,7 +132,7 @@ TEST(TestArt, SharedPrefixChildShiftTest) {
   }
 
   InsertLookupSharedPrefixTest<ART_OLC::Tree>(
-      ART_OLC::Tree(loadNumericKey, g_numericKeys.size()));
+      ART_OLC::Tree(loadNumericKey));
   InsertLookupSharedPrefixTest<TINY_ART_OLC::Tree>(
       TINY_ART_OLC::Tree(loadNumericKey, g_numericKeys.size()));
   InsertLookupSharedPrefixTest<TINY_ART_64_OLC::Tree>(
