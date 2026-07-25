@@ -82,11 +82,10 @@ std::vector<uint64_t> generateKeys(std::size_t count,
 }
 
 template <typename TArt>
-Timings multithreaded(const std::vector<uint64_t>& keys,
+Timings multithreaded(TArt tree, const std::vector<uint64_t>& keys,
                       std::size_t threadCount) {
   keyValues = &keys;
   const auto count = keys.size();
-  TArt tree(loadKey, keys.size());
   tbb::task_arena arena(threadCount);
 
   const auto insertStart = std::chrono::steady_clock::now();
@@ -209,16 +208,16 @@ int main() {
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
       const auto keys = generateKeys(keyCount, distribution);
       logProgress(iteration + 1, iterations, threadCount, "art_olc");
-      addTimings(olcTotal, multithreaded<ART_OLC::Tree>(keys, threadCount));
+      addTimings(olcTotal, multithreaded<ART_OLC::Tree>(ART_OLC::Tree(loadKey), keys, threadCount));
       logProgress(iteration + 1, iterations, threadCount, "tiny_art_olc");
       addTimings(tinyOlcTotal,
-                 multithreaded<TINY_ART_OLC::Tree>(keys, threadCount));
+                 multithreaded<TINY_ART_OLC::Tree>(TINY_ART_OLC::Tree(loadKey, keyCount),keys, threadCount));
       logProgress(iteration + 1, iterations, threadCount, "tiny_art_64_olc");
       addTimings(tiny64OlcTotal,
-                 multithreaded<TINY_ART_64_OLC::Tree>(keys, threadCount));
+                 multithreaded<TINY_ART_64_OLC::Tree>(TINY_ART_64_OLC::Tree(loadKey, keyCount),keys, threadCount));
       logProgress(iteration + 1, iterations, threadCount, "tiny_art_256_olc");
       addTimings(tiny256OlcTotal,
-                 multithreaded<TINY_ART_256_OLC::Tree>(keys, threadCount));
+                 multithreaded<TINY_ART_256_OLC::Tree>(TINY_ART_256_OLC::Tree(loadKey, keyCount),keys, threadCount));
     }
 
     results.push_back(
