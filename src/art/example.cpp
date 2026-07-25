@@ -10,12 +10,18 @@
 #include <random>
 #include <vector>
 
-#include "tbb/tbb.h"
-#include "Key.h"
 #include "ARTSynchronized/OptimisticLockCoupling/Tree.h"
+#include "Key.h"
+#include "tbb/tbb.h"
 #include "tiny_art/Tree.h"
 #include "tiny_art_256/Tree.h"
 #include "tiny_art_64/Tree.h"
+
+std::size_t keyCount = 5'000'000;
+std::size_t iterations = 3;
+constexpr std::size_t distribution = 3;
+std::vector<size_t> threadCounts = {/*1, 2,*/ 4 /*, 8, 16, 24*/};
+size_t seed = 0;
 
 struct Timings {
   uint64_t insertMicroseconds = 0;
@@ -44,12 +50,14 @@ uint64_t splitmix64(uint64_t value) {
   return value ^ (value >> 31);
 }
 
-std::vector<uint64_t> generateKeys(std::size_t count, std::size_t distribution) {
+std::vector<uint64_t> generateKeys(std::size_t count,
+                                   std::size_t distribution) {
   std::vector<uint64_t> keys(count);
 
   if (distribution == 3) {
     for (std::size_t i = 0; i < count; ++i) {
-      keys[i] = splitmix64(i);
+      ++seed;
+      keys[i] = splitmix64(i + seed);
     }
     return keys;
   }
@@ -66,8 +74,7 @@ std::vector<uint64_t> generateKeys(std::size_t count, std::size_t distribution) 
     constexpr uint64_t multiplier = 0x1f123bb5ULL;
     constexpr uint64_t offset = 0x1a2b3c4d5e6fULL;
     for (std::size_t i = 0; i < count; ++i) {
-      keys[i] = (static_cast<uint64_t>(i) * multiplier + offset) &
-                pseudoSparseMask;
+      keys[i] = (i * multiplier + offset) & pseudoSparseMask;
     }
   }
 
@@ -76,7 +83,7 @@ std::vector<uint64_t> generateKeys(std::size_t count, std::size_t distribution) 
 
 template <typename TArt>
 Timings multithreaded(const std::vector<uint64_t>& keys,
-                     std::size_t threadCount) {
+                      std::size_t threadCount) {
   keyValues = &keys;
   const auto count = keys.size();
   TArt tree(loadKey, keys.size());
@@ -84,42 +91,44 @@ Timings multithreaded(const std::vector<uint64_t>& keys,
 
   const auto insertStart = std::chrono::steady_clock::now();
   arena.execute([&] {
-    tbb::parallel_for(
-        tbb::blocked_range<uint64_t>(0, count),
-        [&](const tbb::blocked_range<uint64_t>& range) {
-          auto threadInfo = tree.getThreadInfo();
-          for (uint64_t i = range.begin(); i != range.end(); ++i) {
-            Key key;
-            const auto tid = i + 1;
-            loadKey(tid, key);
-            tree.insert(key, tid, threadInfo);
-          }
-        });
+    tbb::parallel_for(tbb::blocked_range<uint64_t>(0, count),
+                      [&](const tbb::blocked_range<uint64_t>& range) {
+                        auto threadInfo = tree.getThreadInfo();
+                        for (uint64_t i = range.begin(); i != range.end();
+                             ++i) {
+                          Key key;
+                          const auto tid = i + 1;
+                          loadKey(tid, key);
+                          tree.insert(key, tid, threadInfo);
+                        }
+                      });
   });
-  const auto insertDuration = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::steady_clock::now() - insertStart);
+  const auto insertDuration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - insertStart);
 
   const auto lookupStart = std::chrono::steady_clock::now();
   arena.execute([&] {
-    tbb::parallel_for(
-        tbb::blocked_range<uint64_t>(0, count),
-        [&](const tbb::blocked_range<uint64_t>& range) {
-          auto threadInfo = tree.getThreadInfo();
-          for (uint64_t i = range.begin(); i != range.end(); ++i) {
-            Key key;
-            const auto expected = i + 1;
-            loadKey(expected, key);
-            const auto value = tree.lookup(key, threadInfo);
-            if (value != expected) {
-              std::cerr << "wrong key read: " << value
-                        << " expected: " << expected << std::endl;
-              std::abort();
-            }
-          }
-        });
+    tbb::parallel_for(tbb::blocked_range<uint64_t>(0, count),
+                      [&](const tbb::blocked_range<uint64_t>& range) {
+                        auto threadInfo = tree.getThreadInfo();
+                        for (uint64_t i = range.begin(); i != range.end();
+                             ++i) {
+                          Key key;
+                          const auto expected = i + 1;
+                          loadKey(expected, key);
+                          const auto value = tree.lookup(key, threadInfo);
+                          if (value != expected) {
+                            std::cerr << "wrong key read: " << value
+                                      << " expected: " << expected << std::endl;
+                            std::abort();
+                          }
+                        }
+                      });
   });
-  const auto lookupDuration = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::steady_clock::now() - lookupStart);
+  const auto lookupDuration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - lookupStart);
 
   return {static_cast<uint64_t>(insertDuration.count()),
           static_cast<uint64_t>(lookupDuration.count())};
@@ -155,15 +164,15 @@ void printTable(const std::vector<BenchmarkRow>& rows) {
   constexpr int threadWidth = 10;
   constexpr int operationWidth = 24;
 
-  std::cout << '\n' << std::left << std::setw(treeWidth) << "tree"
-            << std::right << std::setw(threadWidth) << "threads"
-            << std::setw(operationWidth) << "million insert_ops/s"
-            << std::setw(operationWidth) << "million lookup_ops/s" << '\n';
+  std::cout << '\n'
+            << std::left << std::setw(treeWidth) << "tree" << std::right
+            << std::setw(threadWidth) << "threads" << std::setw(operationWidth)
+            << "million insert_ops/s" << std::setw(operationWidth)
+            << "million lookup_ops/s" << '\n';
   for (const auto& row : rows) {
-    std::cout << std::left << std::setw(treeWidth) << row.treeName
-              << std::right << std::setw(threadWidth) << row.threadCount
-              << std::fixed << std::setprecision(2)
-              << std::setw(operationWidth)
+    std::cout << std::left << std::setw(treeWidth) << row.treeName << std::right
+              << std::setw(threadWidth) << row.threadCount << std::fixed
+              << std::setprecision(2) << std::setw(operationWidth)
               << row.millionInsertOperationsPerSecond
               << std::setw(operationWidth)
               << row.millionLookupOperationsPerSecond << '\n';
@@ -188,12 +197,6 @@ bool parsePositiveSize(const char* text, std::size_t& value) {
 }
 
 int main() {
-  std::size_t keyCount = 5'000'000;
-  std::size_t iterations = 3;
-  constexpr std::size_t distribution = 3;
-  std::vector<size_t> threadCounts = {/*1, 2,*/ 4/*, 8, 16, 24*/};
-
-  const auto keys = generateKeys(keyCount, distribution);
   std::vector<BenchmarkRow> results;
   results.reserve(threadCounts.size() * 4);
 
@@ -204,6 +207,7 @@ int main() {
     Timings tiny256OlcTotal;
 
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
+      const auto keys = generateKeys(keyCount, distribution);
       logProgress(iteration + 1, iterations, threadCount, "art_olc");
       addTimings(olcTotal, multithreaded<ART_OLC::Tree>(keys, threadCount));
       logProgress(iteration + 1, iterations, threadCount, "tiny_art_olc");
@@ -212,8 +216,7 @@ int main() {
       logProgress(iteration + 1, iterations, threadCount, "tiny_art_64_olc");
       addTimings(tiny64OlcTotal,
                  multithreaded<TINY_ART_64_OLC::Tree>(keys, threadCount));
-      logProgress(iteration + 1, iterations, threadCount,
-                  "tiny_art_256_olc");
+      logProgress(iteration + 1, iterations, threadCount, "tiny_art_256_olc");
       addTimings(tiny256OlcTotal,
                  multithreaded<TINY_ART_256_OLC::Tree>(keys, threadCount));
     }
