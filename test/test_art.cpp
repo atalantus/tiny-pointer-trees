@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -20,9 +22,16 @@ void stringToKey(const std::string& str, Key& key) {
 }
 
 static std::vector<std::string> g_keyStrings;
+static std::vector<uint64_t> g_numericKeys;
 
 void loadStringKey(TID tid, Key& key) {
   stringToKey(g_keyStrings[tid - 1], key);
+}
+
+void loadNumericKey(TID tid, Key& key) {
+  key.setKeyLen(sizeof(tid));
+  reinterpret_cast<uint64_t*>(&key[0])[0] =
+      __builtin_bswap64(g_numericKeys[tid - 1]);
 }
 
 template <typename TArt, unsigned N>
@@ -95,8 +104,39 @@ TEST(TestArt, StringInsertLookupTest) {
   }
 }
 
-TEST(TestArt, PathCompressionTest) {
+template <typename TArt>
+void InsertLookupSharedPrefixTest(TArt tree) {
+  auto threadInfo = tree.getThreadInfo();
+
+  for (uint64_t i = 0; i < g_numericKeys.size(); ++i) {
+    Key key;
+    loadNumericKey(i + 1, key);
+    tree.insert(key, i + 1, threadInfo);
+  }
+
+  for (uint64_t i = 0; i < g_numericKeys.size(); ++i) {
+    Key key;
+    loadNumericKey(i + 1, key);
+    ASSERT_EQ(tree.lookup(key, threadInfo), i + 1);
+  }
 }
 
-TEST(TestArt, LazyExpansionTest) {
+TEST(TestArt, SharedPrefixChildShiftTest) {
+  g_numericKeys.clear();
+  const std::array<uint8_t, 17> secondBytes = {
+      128, 64, 192, 32, 224, 16, 240, 48, 208,
+      80, 176, 96, 160, 112, 144, 0, 255};
+  for (const auto secondByte : secondBytes) {
+    g_numericKeys.push_back((uint64_t{0xAA} << 56) |
+                            (static_cast<uint64_t>(secondByte) << 48));
+  }
+
+  InsertLookupSharedPrefixTest<ART_OLC::Tree>(
+      ART_OLC::Tree(loadNumericKey, g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<TINY_ART_OLC::Tree>(
+      TINY_ART_OLC::Tree(loadNumericKey, g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<TINY_ART_64_OLC::Tree>(
+      TINY_ART_64_OLC::Tree(loadNumericKey, g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<TINY_ART_256_OLC::Tree>(
+      TINY_ART_256_OLC::Tree(loadNumericKey, g_numericKeys.size()));
 }
