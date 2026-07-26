@@ -30,3 +30,8 @@ inline std::pair<uint64_t, uint64_t> id_hash(
     const uint64_t id, const uint8_t shift) {
   return {id + shift, id - shift};
 }
+
+inline TinyPtrHashes word_hash(const std::vector<char>& word) {
+  // TODO: Leave as placeholder for now
+  return {0, 0};
+}

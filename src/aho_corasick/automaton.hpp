@@ -12,7 +12,7 @@ private:
     std::array<Node*, 256> children{};
     Node* suffixLink = nullptr;
     Node* terminalLink = nullptr;
-    std::size_t wordLength = -1;
+    int32_t wordLength = -1;
 
     [[nodiscard]] bool isTerminal() const { return wordLength != -1; }
 
