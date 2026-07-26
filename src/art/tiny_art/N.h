@@ -144,14 +144,13 @@ public:
 
   static ArtTinyPtr getChild(const uint8_t k, const N* node);
 
+  template <typename GenerateVal>
   static void insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                               ArtDerefTables& deref_tables, uint64_t v,
                               N* parentNode, uint64_t parentVersion,
                               uint8_t keyParent,
                               uint8_t key,
-                              std::function<ArtTinyPtr(
-                                  N* parentNode,
-                                  uint8_t parentKey)> generateVal,
+                              GenerateVal& generateVal,
                               bool& needRestart,
                               ThreadInfo& threadInfo);
 
@@ -178,13 +177,12 @@ public:
   static TID getAnyChildTid(std::pair<ArtTinyPtr, const N*> n,
                             ArtDerefTables& deref_tables, bool& needRestart);
 
-  template <typename curN, typename biggerN>
+  template <typename curN, typename biggerN, typename GenerateVal>
   static void insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
                          ArtDerefTables& deref_tables, uint64_t v,
                          N* parentNode,
                          uint64_t parentVersion, uint8_t keyParent, uint8_t key,
-                         std::function<ArtTinyPtr(
-                             N* parentNode, uint8_t parentKey)> generateVal,
+                         GenerateVal& generateVal,
                          bool& needRestart,
                          ThreadInfo& threadInfo);
 

@@ -39,14 +39,12 @@ bool N256::change(N256* node, uint8_t key, ArtTinyPtr val) {
   return n->change(key, val);
 }
 
-template <typename curN>
+template <typename curN, typename GenerateVal>
 void N256::insert(curN* n,
                   uint64_t v,
                   N256* parentNode,
                   uint64_t parentVersion, uint8_t key,
-                  const std::function<ArtTinyPtr(
-                      N256* parentNode, uint8_t parentKey)>&
-                  generateVal, bool& needRestart) {
+                  GenerateVal& generateVal, bool& needRestart) {
   if (parentNode != nullptr) {
     parentNode->readUnlockOrRestart(parentVersion, needRestart);
     if (needRestart) return;
@@ -57,14 +55,13 @@ void N256::insert(curN* n,
   n->writeUnlock();
 }
 
+template <typename GenerateVal>
 void N256::insertAndUnlock(N256* node,
                            uint64_t v,
                            N256* parentNode,
                            uint64_t parentVersion,
                            uint8_t key,
-                           const std::function<ArtTinyPtr(
-                               N256* parentNode,
-                               uint8_t parentKey)>& generateVal,
+                           GenerateVal& generateVal,
                            bool& needRestart) {
   auto n = node;
   insert<N256>(n, v, parentNode, parentVersion, key,

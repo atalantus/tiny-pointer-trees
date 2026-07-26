@@ -82,12 +82,11 @@ bool N::change(N* node, uint8_t key, ArtTinyPtr val) {
   __builtin_unreachable();
 }
 
-template <typename curN, typename biggerN>
+template <typename curN, typename biggerN, typename GenerateVal>
 void N::insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
                    ArtDerefTables& deref_tables, uint64_t v, N* parentNode,
                    uint64_t parentVersion, uint8_t keyParent, uint8_t key,
-                   std::function<ArtTinyPtr(N* parentNode, uint8_t parentKey)>
-                   generateVal, bool& needRestart,
+                   GenerateVal& generateVal, bool& needRestart,
                    ThreadInfo& threadInfo) {
   if (!n->isFull()) {
     if (parentNode != nullptr) {
@@ -125,12 +124,11 @@ void N::insertGrow(curN* n, ArtTinyPtr nodeTinyPtr,
   parentNode->writeUnlock();
 }
 
+template <typename GenerateVal>
 void N::insertAndUnlock(N* node, ArtTinyPtr nodeTinyPtr,
                         ArtDerefTables& deref_tables, uint64_t v, N* parentNode,
                         uint64_t parentVersion, uint8_t keyParent, uint8_t key,
-                        std::function<ArtTinyPtr(
-                            N* parentNode, uint8_t parentKey)> generateVal,
-                        bool& needRestart,
+                        GenerateVal& generateVal, bool& needRestart,
                         ThreadInfo& threadInfo) {
   switch (node->getType()) {
     case NTypes::N4: {
