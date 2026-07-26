@@ -194,12 +194,14 @@ static void printTable(const std::vector<PerfBenchmarkRow>& rows) {
   constexpr int threadWidth = 10;
   constexpr int operationWidth = 10;
   constexpr int counterWidth = 18;
+  constexpr int throughputWidth = 18;
 
   std::cout << '\n'
       << "PerfEvent counters (average per operation across iterations)\n"
       << std::left << std::setw(treeWidth) << "tree" << std::right
       << std::setw(threadWidth) << "threads" << std::setw(operationWidth)
-      << "operation" << std::setw(counterWidth) << "cycles/op"
+      << "operation" << std::setw(throughputWidth) << "m ops/s"
+      << std::setw(counterWidth) << "cycles/op"
       << std::setw(counterWidth) << "kcycles/op"
       << std::setw(counterWidth) << "instructions/op"
       << std::setw(counterWidth) << "L1-misses/op"
@@ -208,20 +210,22 @@ static void printTable(const std::vector<PerfBenchmarkRow>& rows) {
       << std::setw(counterWidth) << "task-ns/op" << '\n';
 
   const auto printCounters = [&](const PerfBenchmarkRow& row,
-                                 const char* phase,
-                                 const PerfCounters& counters) {
+                                 const char* operation,
+                                 const PerfCounters& counters,
+                                 double millionOperationsPerSecond) {
     std::cout << std::left << std::setw(treeWidth) << row.throughput.treeName
         << std::right << std::setw(threadWidth)
         << row.throughput.threadCount
-        << std::setw(operationWidth) << phase;
+        << std::setw(operationWidth) << operation << std::fixed
+        << std::setprecision(2) << std::setw(throughputWidth)
+        << millionOperationsPerSecond;
 
     if (!counters.available) {
       std::cout << std::setw(counterWidth * 7) << "unavailable" << '\n';
       return;
     }
 
-    std::cout << std::fixed << std::setprecision(2)
-        << std::setw(counterWidth) << counters.cycles
+    std::cout << std::setw(counterWidth) << counters.cycles
         << std::setw(counterWidth) << counters.kernelCycles
         << std::setw(counterWidth) << counters.instructions
         << std::setw(counterWidth) << counters.l1Misses
@@ -231,8 +235,10 @@ static void printTable(const std::vector<PerfBenchmarkRow>& rows) {
   };
 
   for (const auto& row : rows) {
-    printCounters(row, "insert", row.insertCounters);
-    printCounters(row, "lookup", row.lookupCounters);
+    printCounters(row, "insert", row.insertCounters,
+                  row.throughput.millionInsertOperationsPerSecond);
+    printCounters(row, "lookup", row.lookupCounters,
+                  row.throughput.millionLookupOperationsPerSecond);
   }
 }
 
