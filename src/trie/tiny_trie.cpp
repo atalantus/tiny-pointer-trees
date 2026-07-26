@@ -122,6 +122,7 @@ TinyTrie::create_parent_node(std::string_view word) const {
 
     if (cur_node->nodes[c] == TinyPtrT::null || is_tagged) {
       auto [ptr, node] = this->deref_table.allocate(h);
+      new(node) Node();
       cur_node->nodes[c] = ptr;
       cur_node = node;
       cur_node->is_terminal = is_tagged;

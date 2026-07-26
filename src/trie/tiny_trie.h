@@ -80,6 +80,7 @@ private:
 inline TinyTrie::TinyTrie(const size_t expected_number_of_nodes)
   : count(0), deref_table(DerefTable<Node>::Create(expected_number_of_nodes)) {
   root = deref_table.allocate({0, 0});
+  new(root.second) Node();
 }
 
 template <typename StringT>
@@ -93,6 +94,7 @@ TinyTrie::TinyTrie(const std::vector<StringT>& sorted_words) : count(0) {
   deref_table = DerefTable<Node>::Create(node_count_sum);
 
   root = deref_table.allocate({0, 0});
+  new(root.second) Node();
 
   for (auto word : sorted_words) { insert(std::string_view(word)); }
 }
