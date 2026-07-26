@@ -33,6 +33,23 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    add_compile_options(
+            -O3
+            -g
+            -march=native
+            -fno-omit-frame-pointer
+            -ffast-math
+    )
+
+    # Enable LTO / IPO safely
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported)
+    if(ipo_supported)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    endif()
+endif()
+
 enable_testing()
 
 include(FetchContent)

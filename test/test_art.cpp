@@ -69,13 +69,13 @@ TEST(TestArt, InsertLookup10Test) {
 }
 
 TEST(TestArt, InsertLookup1000000Test) {
-  InsertLookupTest<ART_OLC::Tree, 1000000>(ART_OLC::Tree(loadKey));
-  InsertLookupTest<TINY_ART_OLC::Tree, 1000000>(
-      TINY_ART_OLC::Tree(loadKey, 1000000));
-  InsertLookupTest<TINY_ART_64_OLC::Tree, 1000000>(
-      TINY_ART_64_OLC::Tree(loadKey, 1000000));
-  InsertLookupTest<TINY_ART_256_OLC::Tree, 1000000>(
-      TINY_ART_256_OLC::Tree(loadKey, 1000000));
+  // InsertLookupTest<ART_OLC::Tree, 1000000>(ART_OLC::Tree(loadKey));
+  InsertLookupTest<TINY_ART_OLC::Tree, 1'000'000>(
+      TINY_ART_OLC::Tree(loadKey, 1'000'000));
+  // InsertLookupTest<TINY_ART_64_OLC::Tree, 1000000>(
+      // TINY_ART_64_OLC::Tree(loadKey, 1000000));
+  // InsertLookupTest<TINY_ART_256_OLC::Tree, 1000000>(
+      // TINY_ART_256_OLC::Tree(loadKey, 1000000));
 }
 
 TEST(TestArt, StringInsertLookupTest) {

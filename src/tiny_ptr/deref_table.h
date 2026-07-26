@@ -70,7 +70,7 @@ public:
   // (minus 1 to preserve null and tagged tinyptr)
 
   // If newly "allocated" memory should be zeroed before it is returned.
-  static constexpr bool ZERO_NEW_ALLOCATED_MEMORY = true;
+  static constexpr bool ZERO_NEW_ALLOCATED_MEMORY = false;
 
 private:
   // The prime number used for the hash table. See: https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
