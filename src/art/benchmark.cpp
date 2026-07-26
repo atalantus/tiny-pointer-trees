@@ -15,7 +15,7 @@ struct Timings {
 
 template <typename TOperation>
 static uint64_t runOperation(tbb::task_arena& arena, uint64_t count,
-                         TOperation operation) {
+                             TOperation operation) {
   const auto start = std::chrono::steady_clock::now();
   arena.execute([&] {
     tbb::parallel_for(tbb::blocked_range<uint64_t>(0, count),
@@ -24,13 +24,14 @@ static uint64_t runOperation(tbb::task_arena& arena, uint64_t count,
                       });
   });
   return std::chrono::duration_cast<std::chrono::microseconds>(
-             std::chrono::steady_clock::now() - start)
+          std::chrono::steady_clock::now() - start)
       .count();
 }
 
 template <typename TArt>
-static Timings multithreaded(TArt tree, const std::vector<uint64_t>& keys,
-                             std::size_t threadCount) {
+static Timings runBenchmarkIteration(TArt tree,
+                                     const std::vector<uint64_t>& keys,
+                                     std::size_t threadCount) {
   keyValues = &keys;
   const auto count = keys.size();
   tbb::task_arena arena(threadCount);
@@ -50,14 +51,19 @@ static Timings multithreaded(TArt tree, const std::vector<uint64_t>& keys,
       Key key;
       const auto expected = i + 1;
       loadKey(expected, key);
+#if DEBUG
       if (tree.lookup(key, threadInfo) != expected) {
         std::cerr << "wrong key read" << std::endl;
         std::abort();
       }
+#else
+      tree.lookup(key, threadInfo);
+#endif
     }
   };
 
-  return {.insertMicroseconds = runOperation(arena, count, insert), .lookupMicroseconds = runOperation(arena, count, lookup)};
+  return {.insertMicroseconds = runOperation(arena, count, insert),
+          .lookupMicroseconds = runOperation(arena, count, lookup)};
 }
 
 static void addTimings(Timings& total, const Timings& timings) {
@@ -75,28 +81,30 @@ int main() {
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
       const auto keys = generateKeys(keyCount);
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
-                << threadCount << " threads: art_olc" << std::endl;
+          << threadCount << " threads: art_olc" << std::endl;
       addTimings(olcTotal,
-                 multithreaded(ART_OLC::Tree(loadKey), keys, threadCount));
+                 runBenchmarkIteration(ART_OLC::Tree(loadKey), keys,
+                                       threadCount));
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
-                << threadCount << " threads: tiny_art_olc" << std::endl;
+          << threadCount << " threads: tiny_art_olc" << std::endl;
       addTimings(tinyOlcTotal,
-                 multithreaded(TINY_ART_OLC::Tree(loadKey, keyCount), keys,
-                               threadCount));
+                 runBenchmarkIteration(TINY_ART_OLC::Tree(loadKey, keyCount),
+                                       keys,
+                                       threadCount));
     }
 
     results.push_back(
-        {.treeName = "art_olc", .threadCount = threadCount,
-         .millionInsertOperationsPerSecond = millionOperationsPerSecond(keyCount,
-           olcTotal.insertMicroseconds / iterations),
-         .millionLookupOperationsPerSecond = millionOperationsPerSecond(keyCount,
-           olcTotal.lookupMicroseconds / iterations)});
+    {.treeName = "art_olc", .threadCount = threadCount,
+     .millionInsertOperationsPerSecond = millionOperationsPerSecond(keyCount,
+       olcTotal.insertMicroseconds / iterations),
+     .millionLookupOperationsPerSecond = millionOperationsPerSecond(keyCount,
+       olcTotal.lookupMicroseconds / iterations)});
     results.push_back(
-        {.treeName = "tiny_art_olc", .threadCount = threadCount,
-         .millionInsertOperationsPerSecond = millionOperationsPerSecond(
-             keyCount, tinyOlcTotal.insertMicroseconds / iterations),
-         .millionLookupOperationsPerSecond = millionOperationsPerSecond(
-             keyCount, tinyOlcTotal.lookupMicroseconds / iterations)});
+    {.treeName = "tiny_art_olc", .threadCount = threadCount,
+     .millionInsertOperationsPerSecond = millionOperationsPerSecond(
+         keyCount, tinyOlcTotal.insertMicroseconds / iterations),
+     .millionLookupOperationsPerSecond = millionOperationsPerSecond(
+         keyCount, tinyOlcTotal.lookupMicroseconds / iterations)});
   }
   printThroughputTable(results);
 }

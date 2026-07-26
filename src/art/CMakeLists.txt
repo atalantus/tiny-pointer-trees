@@ -13,9 +13,6 @@ find_library(TbbLib tbb REQUIRED)
 find_package(Threads REQUIRED)
 target_link_libraries(art PUBLIC ${TbbLib} Threads::Threads)
 
-add_executable(art_example example.cpp)
-target_link_libraries(art_example PUBLIC art)
-
 add_executable(benchmark benchmark.cpp)
 target_link_libraries(benchmark PUBLIC art)
 

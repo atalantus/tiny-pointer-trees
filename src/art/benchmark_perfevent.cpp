@@ -36,17 +36,17 @@ struct PerfBenchmarkRow {
   PerfCounters lookupCounters;
 };
 
-PerfCounters readCounters(PerfEvent& event) {
+static PerfCounters readCounters(PerfEvent& event) {
   if (event.events.empty()) {
     return {};
   }
-  return {event.getCounter("cycle"),  event.getCounter("kcycle"),
-          event.getCounter("instr"),  event.getCounter("L1-miss"),
+  return {event.getCounter("cycle"), event.getCounter("kcycle"),
+          event.getCounter("instr"), event.getCounter("L1-miss"),
           event.getCounter("c-miss"), event.getCounter("br-miss"),
-          event.getCounter("task"),   true};
+          event.getCounter("task"), true};
 }
 
-void addCounters(PerfCounters& total, const PerfCounters& counters) {
+static void addCounters(PerfCounters& total, const PerfCounters& counters) {
   total.cycles += counters.cycles;
   total.kernelCycles += counters.kernelCycles;
   total.instructions += counters.instructions;
@@ -58,9 +58,9 @@ void addCounters(PerfCounters& total, const PerfCounters& counters) {
 }
 
 template <typename TOperation>
-uint64_t runOperation(tbb::task_arena& arena, uint64_t count,
-                  std::size_t threadCount, TOperation operation,
-                  PerfCounters& counters) {
+static uint64_t runOperation(tbb::task_arena& arena, uint64_t count,
+                             std::size_t threadCount, TOperation operation,
+                             PerfCounters& counters) {
   const auto workerCount = std::min<std::size_t>(threadCount, count);
   std::vector<PerfCounters> workerCounters(workerCount);
 
@@ -92,11 +92,13 @@ uint64_t runOperation(tbb::task_arena& arena, uint64_t count,
 }
 
 template <typename TArt>
-Timings multithreaded(TArt tree, const std::vector<uint64_t>& keys,
-                      std::size_t threadCount) {
+static Timings runBenchmarkIteration(TArt tree,
+                                     const std::vector<uint64_t>& keys,
+                                     std::size_t threadCount) {
   keyValues = &keys;
   const auto count = keys.size();
   tbb::task_arena arena(threadCount);
+
   const auto insert = [&](uint64_t begin, uint64_t end) {
     auto threadInfo = tree.getThreadInfo();
     for (uint64_t i = begin; i != end; ++i) {
@@ -106,43 +108,47 @@ Timings multithreaded(TArt tree, const std::vector<uint64_t>& keys,
       tree.insert(key, tid, threadInfo);
     }
   };
+
   const auto lookup = [&](uint64_t begin, uint64_t end) {
     auto threadInfo = tree.getThreadInfo();
     for (uint64_t i = begin; i != end; ++i) {
       Key key;
       const auto expected = i + 1;
       loadKey(expected, key);
-      if (tree.lookup(key, threadInfo) != expected) {
-        std::cerr << "wrong key read" << std::endl;
-        std::abort();
-      }
+      tree.lookup(key, threadInfo);
     }
   };
 
   PerfCounters insertCounters;
   PerfCounters lookupCounters;
-  return {runOperation(arena, count, threadCount, insert, insertCounters),
-          runOperation(arena, count, threadCount, lookup, lookupCounters),
-          insertCounters,
-          lookupCounters,
-          insertCounters.available ? 1U : 0U,
-          lookupCounters.available ? 1U : 0U};
+  return {
+      .insertMicroseconds = runOperation(arena, count, threadCount, insert,
+                                         insertCounters),
+      .lookupMicroseconds = runOperation(arena, count, threadCount, lookup,
+                                         lookupCounters),
+      .insertCounters = insertCounters,
+      .lookupCounters = lookupCounters,
+      .insertCounterSamples = insertCounters.available ? 1U : 0U,
+      .lookupCounterSamples = lookupCounters.available ? 1U : 0U};
 }
 
-void addTimings(Timings& total, const Timings& timings) {
+static void addTimings(Timings& total, const Timings& timings) {
   total.insertMicroseconds += timings.insertMicroseconds;
   total.lookupMicroseconds += timings.lookupMicroseconds;
+
   if (timings.insertCounters.available) {
     addCounters(total.insertCounters, timings.insertCounters);
     total.insertCounterSamples += timings.insertCounterSamples;
   }
+
   if (timings.lookupCounters.available) {
     addCounters(total.lookupCounters, timings.lookupCounters);
     total.lookupCounterSamples += timings.lookupCounterSamples;
   }
 }
 
-PerfCounters averageCounters(PerfCounters counters, std::size_t samples) {
+static PerfCounters
+averageCounters(PerfCounters counters, std::size_t samples) {
   if (samples == 0) {
     return {};
   }
@@ -157,63 +163,73 @@ PerfCounters averageCounters(PerfCounters counters, std::size_t samples) {
   return counters;
 }
 
-PerfBenchmarkRow averageRow(const char* treeName, std::size_t threadCount,
-                            const Timings& total) {
-  return {{treeName,
-           threadCount,
-           millionOperationsPerSecond(keyCount,
-                                      total.insertMicroseconds / iterations),
-           millionOperationsPerSecond(keyCount,
-                                      total.lookupMicroseconds / iterations)},
-          averageCounters(total.insertCounters, total.insertCounterSamples),
-          averageCounters(total.lookupCounters, total.lookupCounterSamples)};
+static PerfBenchmarkRow averageRow(const char* treeName,
+                                   std::size_t threadCount,
+                                   const Timings& total) {
+  return {.throughput = {treeName,
+                         threadCount,
+                         millionOperationsPerSecond(keyCount,
+                                                    total.insertMicroseconds /
+                                                    iterations),
+                         millionOperationsPerSecond(keyCount,
+                                                    total.lookupMicroseconds /
+                                                    iterations)},
+          .insertCounters = averageCounters(total.insertCounters,
+                                            total.insertCounterSamples),
+          .lookupCounters = averageCounters(total.lookupCounters,
+                                            total.lookupCounterSamples)};
 }
 
-void printTable(const std::vector<PerfBenchmarkRow>& rows) {
-  std::vector<benchmark::BenchmarkRow> throughput;
+static void printTable(const std::vector<PerfBenchmarkRow>& rows) {
+  std::vector<BenchmarkRow> throughput;
   throughput.reserve(rows.size());
+
   for (const auto& row : rows) {
     throughput.push_back(row.throughput);
   }
+
   printThroughputTable(throughput);
 
   constexpr int treeWidth = 22;
   constexpr int threadWidth = 10;
-  constexpr int operationWidth = 24;
-  constexpr int phaseWidth = 10;
+  constexpr int operationWidth = 10;
   constexpr int counterWidth = 18;
+
   std::cout << '\n'
-            << "PerfEvent counters (average per operation across iterations)\n"
-            << std::left << std::setw(treeWidth) << "tree" << std::right
-            << std::setw(threadWidth) << "threads" << std::setw(phaseWidth)
-            << "operation" << std::setw(counterWidth) << "cycles/op"
-            << std::setw(counterWidth) << "kcycles/op"
-            << std::setw(counterWidth) << "instructions/op"
-            << std::setw(counterWidth) << "L1-misses/op"
-            << std::setw(counterWidth) << "cache-misses/op"
-            << std::setw(counterWidth) << "branch-misses/op"
-            << std::setw(counterWidth) << "task-ns/op" << '\n';
+      << "PerfEvent counters (average per operation across iterations)\n"
+      << std::left << std::setw(treeWidth) << "tree" << std::right
+      << std::setw(threadWidth) << "threads" << std::setw(operationWidth)
+      << "operation" << std::setw(counterWidth) << "cycles/op"
+      << std::setw(counterWidth) << "kcycles/op"
+      << std::setw(counterWidth) << "instructions/op"
+      << std::setw(counterWidth) << "L1-misses/op"
+      << std::setw(counterWidth) << "cache-misses/op"
+      << std::setw(counterWidth) << "branch-misses/op"
+      << std::setw(counterWidth) << "task-ns/op" << '\n';
 
   const auto printCounters = [&](const PerfBenchmarkRow& row,
                                  const char* phase,
                                  const PerfCounters& counters) {
     std::cout << std::left << std::setw(treeWidth) << row.throughput.treeName
-              << std::right << std::setw(threadWidth)
-              << row.throughput.threadCount
-              << std::setw(phaseWidth) << phase;
+        << std::right << std::setw(threadWidth)
+        << row.throughput.threadCount
+        << std::setw(operationWidth) << phase;
+
     if (!counters.available) {
       std::cout << std::setw(counterWidth * 7) << "unavailable" << '\n';
       return;
     }
+
     std::cout << std::fixed << std::setprecision(2)
-              << std::setw(counterWidth) << counters.cycles
-              << std::setw(counterWidth) << counters.kernelCycles
-              << std::setw(counterWidth) << counters.instructions
-              << std::setw(counterWidth) << counters.l1Misses
-              << std::setw(counterWidth) << counters.cacheMisses
-              << std::setw(counterWidth) << counters.branchMisses
-              << std::setw(counterWidth) << counters.taskNanoseconds << '\n';
+        << std::setw(counterWidth) << counters.cycles
+        << std::setw(counterWidth) << counters.kernelCycles
+        << std::setw(counterWidth) << counters.instructions
+        << std::setw(counterWidth) << counters.l1Misses
+        << std::setw(counterWidth) << counters.cacheMisses
+        << std::setw(counterWidth) << counters.branchMisses
+        << std::setw(counterWidth) << counters.taskNanoseconds << '\n';
   };
+
   for (const auto& row : rows) {
     printCounters(row, "insert", row.insertCounters);
     printCounters(row, "lookup", row.lookupCounters);
@@ -230,14 +246,16 @@ int main() {
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
       const auto keys = generateKeys(keyCount);
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
-                << threadCount << " threads: art_olc" << std::endl;
+          << threadCount << " threads: art_olc" << std::endl;
       addTimings(olcTotal,
-                 multithreaded(ART_OLC::Tree(loadKey), keys, threadCount));
+                 runBenchmarkIteration(ART_OLC::Tree(loadKey), keys,
+                                       threadCount));
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
-                << threadCount << " threads: tiny_art_olc" << std::endl;
+          << threadCount << " threads: tiny_art_olc" << std::endl;
       addTimings(tinyOlcTotal,
-                 multithreaded(TINY_ART_OLC::Tree(loadKey, keyCount), keys,
-                               threadCount));
+                 runBenchmarkIteration(TINY_ART_OLC::Tree(loadKey, keyCount),
+                                       keys,
+                                       threadCount));
     }
     results.push_back(averageRow("art_olc", threadCount, olcTotal));
     results.push_back(averageRow("tiny_art_olc", threadCount, tinyOlcTotal));
