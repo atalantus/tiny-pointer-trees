@@ -8,6 +8,8 @@
 #include "benchmark.hpp"
 #include "ARTSynchronized/OptimisticLockCoupling/Tree.h"
 #include "tiny_art/Tree.h"
+#include "tiny_art_256/Tree.h"
+#include "tiny_art_64/Tree.h"
 #include "util/PerfEvent.hpp"
 
 struct PerfCounters {
@@ -249,22 +251,56 @@ int main() {
   for (const auto threadCount : threadCounts) {
     Timings olcTotal;
     Timings tinyOlcTotal;
+    Timings tiny64OlcTotal;
+    Timings tiny256OlcTotal;
+
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
       const auto keys = generateKeys(keyCount);
+
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
           << threadCount << " threads: art_olc" << std::endl;
       addTimings(olcTotal,
                  runBenchmarkIteration(ART_OLC::Tree(loadKey), keys,
                                        threadCount));
+
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
           << threadCount << " threads: tiny_art_olc" << std::endl;
       addTimings(tinyOlcTotal,
-                 runBenchmarkIteration(TINY_ART_OLC::Tree(loadKey, keyCount),
+                 runBenchmarkIteration(TINY_ART_OLC::Tree(
+                                           loadKey, tinyOlcNodeCounts[0],
+                                           tinyOlcNodeCounts[1],
+                                           tinyOlcNodeCounts[2],
+                                           tinyOlcNodeCounts[3]),
                                        keys,
                                        threadCount));
+
+      std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
+          << threadCount << " threads: tiny_art_64_olc" << std::endl;
+      addTimings(tiny64OlcTotal,
+                 runBenchmarkIteration(
+                     TINY_ART_64_OLC::Tree(loadKey, tiny64OlcNodeCounts[0],
+                                           tiny64OlcNodeCounts[1],
+                                           tiny64OlcNodeCounts[2],
+                                           tiny64OlcNodeCounts[3]),
+                     keys,
+                     threadCount));
+
+      std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "
+          << threadCount << " threads: tiny_art_256_olc" << std::endl;
+      addTimings(tiny256OlcTotal,
+                 runBenchmarkIteration(
+                     TINY_ART_256_OLC::Tree(loadKey, tiny256OlcNodeCounts[0],
+                                            tiny256OlcNodeCounts[1]),
+                     keys,
+                     threadCount));
     }
+
     results.push_back(averageRow("art_olc", threadCount, olcTotal));
     results.push_back(averageRow("tiny_art_olc", threadCount, tinyOlcTotal));
+    results.push_back(
+        averageRow("tiny_art_64_olc", threadCount, tiny64OlcTotal));
+    results.push_back(averageRow("tiny_art_256_olc", threadCount,
+                                 tiny256OlcTotal));
   }
 
   printTable(results);

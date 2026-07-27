@@ -10,13 +10,8 @@
 #include "../Key.h"
 
 namespace TINY_ART_256_OLC {
-Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
-                                          nullptr, 0, {0, 0}, deref_tables)),
-                                      loadKey(loadKey) {
-}
-
-Tree::Tree(LoadKeyFunction loadKey, const size_t expected_node_count)
-  : deref_tables(expected_node_count),
+Tree::Tree(LoadKeyFunction loadKey, const size_t n256_count, size_t leaf_count)
+  : deref_tables(n256_count, leaf_count),
     root(N256::Create(nullptr, 0, {0, 0}, deref_tables)),
     loadKey(loadKey) {
 }
@@ -84,7 +79,7 @@ restart:
           return tid;
         }
         node = deref_tables.n256_deref_table.dereference(nodeTinyPtr,
-                                        id_hash(parentNode->getId(), k[level]));
+          id_hash(parentNode->getId(), k[level]));
         level++;
     }
     uint64_t nv = node->readLockOrRestart(needRestart);
@@ -623,8 +618,8 @@ restart:
                             deref_tables).first;
       };
       N256::insertAndUnlock(node, v, parentNode,
-                         parentVersion, nodeKey,
-                         generateVal, needRestart);
+                            parentVersion, nodeKey,
+                            generateVal, needRestart);
       if (needRestart) goto restart;
       return;
     }
@@ -676,7 +671,7 @@ restart:
       return;
     }
     nextNode = deref_tables.n256_deref_table.dereference(nextNodeTinyPtr,
-                                        id_hash(node->getId(), nodeKey));
+      id_hash(node->getId(), nodeKey));
     level++;
     parentVersion = v;
   }

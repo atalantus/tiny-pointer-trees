@@ -18,6 +18,12 @@ inline std::vector<std::size_t> threadCounts = {
 inline std::size_t seed = 0;
 inline const std::vector<uint64_t>* keyValues;
 
+inline std::array<size_t, 4> tinyOlcNodeCounts = {
+    600'000, 60'000, 65'000, keyCount};
+inline std::array<size_t, 4> tiny64OlcNodeCounts = {
+    600'000, 60'000, 38'000, keyCount};
+inline std::array<size_t, 2> tiny256OlcNodeCounts = {668'000, keyCount};
+
 struct BenchmarkRow {
   const char* treeName;
   std::size_t threadCount;

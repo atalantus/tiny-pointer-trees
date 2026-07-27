@@ -10,15 +10,13 @@
 #include "../Key.h"
 
 namespace TINY_ART_OLC {
-Tree::Tree(LoadKeyFunction loadKey) : root(N256::Create(
-                                          nullptr, 0, {0, 0}, deref_tables)),
-                                      loadKey(loadKey) {
-}
-
-Tree::Tree(LoadKeyFunction loadKey, const size_t expected_node_count)
-  : deref_tables(expected_node_count),
-    root(N256::Create(nullptr, 0, {0, 0}, deref_tables)),
-    loadKey(loadKey) {
+Tree::Tree(LoadKeyFunction loadKey, size_t n4_size, size_t n16_size,
+           size_t n256_size, size_t leaf_size) : deref_tables(n4_size, n16_size,
+                                                   n256_size, leaf_size),
+                                                 root(N256::Create(
+                                                     nullptr, 0, {0, 0},
+                                                     deref_tables)),
+                                                 loadKey(loadKey) {
 }
 
 Tree::~Tree() {

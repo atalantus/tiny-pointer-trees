@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <new>
 #include <type_traits>
@@ -76,7 +77,9 @@ private:
   // The prime number used for the hash table. See: https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
   primes::Prime _ht_prime;
   // The current size of the dereference table e.g., how many objects of type T are currently stored.
-  std::atomic<uint32_t> _size;
+  std::atomic<uint32_t> _size = 0;
+  // The maximum size that the dereference table ever reached.
+  std::atomic<uint32_t> _max_reached_size = 0;
   // The number of buckets of this dereference table. This is always a power of two for fast bucket indexing
   // (simple binary-and operation instead of modulo).
   uint32_t _num_buckets;
@@ -157,7 +160,7 @@ public:
 
   /**
    * Tries to allocate a new object inside this dereference table, returning a tinyptr_t
-   * and a pointer to the newly allocated object. Throws a runtime error if there was no more
+   * and a pointer to the newly allocated object. Aborts if there was no more
    * free space for allocating a new object.
    *
    * This operation is thread-safe.
@@ -201,6 +204,8 @@ public:
    */
   const TObject* dereference(TinyPtrT tinyptr,
                              TinyPtrHashes h) const;
+
+  void printDerefTableStats() const;
 
 private:
   std::pair<TinyPtrT, TObject*> allocate_impl(TinyPtrHashes h,
@@ -250,14 +255,12 @@ DerefTable<TObject, TTinyPtr, STinyPtr> DerefTable<
                                 ENTRIES_PER_BIN_COUNT)));
 }
 
-inline void throw_fill_factor_exception(uint32_t size, uint32_t capacity) {
+inline void abort_overflow(uint32_t size, uint32_t capacity) {
   const auto fill_factor = static_cast<float>(size) / static_cast<float>(
                              capacity);
-  throw std::runtime_error(
-      "Unable to allocate new object at fill factor " + std::to_string(
-          fill_factor) +
-      ". Size: " + std::to_string(size) + ", Capacity: " + std::to_string(
-          capacity));
+  std::cerr << "Unable to allocate new object at fill factor " << fill_factor <<
+      ". Size: " << size << ", Capacity: " << capacity << std::endl;
+  std::abort();
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
@@ -265,8 +268,8 @@ std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
 DerefTable<TObject, TTinyPtr, STinyPtr>::allocate_impl(
     const TinyPtrHashes h, const TTinyPtr special, bool zero_memory) {
   if (_size.load(std::memory_order::relaxed) >= _capacity) {
-    throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
-                                _capacity);
+    abort_overflow(_size.load(std::memory_order::relaxed),
+                   _capacity);
   }
 
   auto h1_index = _ht_prime.mod(h.first);
@@ -303,8 +306,8 @@ retry: {
         try_upgrade_to_exclusive(h_excl_lock)) { goto retry; }
 
     if (h_meta_data.free_slot_count == 0) {
-      throw_fill_factor_exception(_size.load(std::memory_order::relaxed),
-                                  _capacity);
+      abort_overflow(_size.load(std::memory_order::relaxed),
+                     _capacity);
     }
     assert(
         object_index < ENTRIES_PER_BIN_COUNT &&
@@ -316,7 +319,10 @@ retry: {
 
     h_excl_lock.unlock();
 
-    _size.fetch_add(1, std::memory_order::relaxed);
+    auto s = _size.fetch_add(1, std::memory_order::relaxed);
+    if (s > _max_reached_size.load()) {
+      _max_reached_size.store(s + 1);
+    }
 
     if (zero_memory) {
       memset(&object_entry, 0, sizeof(TObject));
@@ -367,6 +373,16 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
   const TTinyPtr index = tinyptr.index();
 
   return get_data_object(_ht_prime.mod(hash), index);
+}
+
+template <typename TObject, std::unsigned_integral TTinyPtrT, unsigned STinyPtr>
+void DerefTable<TObject, TTinyPtrT, STinyPtr>::printDerefTableStats() const {
+  auto s = size();
+  auto max_size = _max_reached_size.load(std::memory_order_relaxed);
+  std::cout << "Size: " << s << ", Max Size: " << max_size << ", Capacity: "
+      << capacity() << ", Fill Factor: " << static_cast<double>(s) / static_cast
+      <double>(capacity()) << ", Max Fill Factor: " << static_cast<double>(
+        max_size) / static_cast<double>(capacity()) << std::endl;
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>

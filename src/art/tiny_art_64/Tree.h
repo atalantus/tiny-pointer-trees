@@ -9,9 +9,9 @@ class Tree {
 public:
   using LoadKeyFunction = void (*)(TID tid, Key& key);
 
-private:
   ArtDerefTables deref_tables;
 
+private:
   std::pair<ArtTinyPtr, N256*> const root;
 
   TID checkKey(const TID tid, const Key& k) const;
@@ -66,14 +66,10 @@ public:
                                     bool& needRestart);
 
 public:
-  Tree(LoadKeyFunction loadKey);
-
-  Tree(LoadKeyFunction loadKey, size_t expected_node_count);
+  Tree(LoadKeyFunction loadKey, size_t n16_size, size_t n64_size,
+       size_t n256_size, size_t leaf_size);
 
   Tree(const Tree&) = delete;
-
-  Tree(Tree&& t) : root(t.root), loadKey(t.loadKey) {
-  }
 
   ~Tree();
 

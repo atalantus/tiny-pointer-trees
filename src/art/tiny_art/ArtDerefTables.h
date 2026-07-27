@@ -10,18 +10,12 @@ public:
   ArtN256DerefTable n256_deref_table;
   ArtLeafDerefTable leaf_deref_table;
 
-  ArtDerefTables()
-    : n4_deref_table(ArtN4DerefTable::Create(1024)),
-      n16_deref_table(ArtN16DerefTable::Create(1024)),
-      n256_deref_table(ArtN256DerefTable::Create(1024)),
-      leaf_deref_table(ArtLeafDerefTable::Create(1024)) {
-  }
-
-  explicit ArtDerefTables(size_t count)
-    : n4_deref_table(ArtN4DerefTable::Create(count)),
-      n16_deref_table(ArtN16DerefTable::Create(count)),
-      n256_deref_table(ArtN256DerefTable::Create(count)),
-      leaf_deref_table(ArtLeafDerefTable::Create(count)) {
+  ArtDerefTables(size_t n4_count, size_t n16_count, size_t n256_count,
+                          size_t leaf_count)
+    : n4_deref_table(ArtN4DerefTable::Create(n4_count)),
+      n16_deref_table(ArtN16DerefTable::Create(n16_count)),
+      n256_deref_table(ArtN256DerefTable::Create(n256_count)),
+      leaf_deref_table(ArtLeafDerefTable::Create(leaf_count)) {
   }
 
   void free(ArtTinyPtr tinyPtr, TinyPtrHashes h) {
@@ -92,6 +86,17 @@ public:
       default: assert(false);
         __builtin_unreachable();
     }
+  }
+
+  void printDerefTableSizes() {
+    std::cout << "N4 Deref Table: ";
+    n4_deref_table.printDerefTableStats();
+    std::cout << "N16 Deref Table: ";
+    n16_deref_table.printDerefTableStats();
+    std::cout << "N256 Deref Table: ";
+    n256_deref_table.printDerefTableStats();
+    std::cout << "Leaf Deref Table: ";
+    leaf_deref_table.printDerefTableStats();
   }
 };
 } // namespace TINY_ART_OLC
