@@ -44,7 +44,13 @@ static Timings runBenchmarkIteration(TArt tree,
     for (uint64_t i = begin; i != end; ++i) {
       Key key;
       loadKey(i + 1, key);
-      tree.insert(key, i + 1, threadInfo);
+      try {
+        tree.insert(key, i + 1, threadInfo);
+      } catch (const std::runtime_error& e) {
+        std::cerr << "Insert failed for key " << i + 1 << ": " << e.what()
+                  << std::endl;
+        std::abort();
+      }
     }
   };
 

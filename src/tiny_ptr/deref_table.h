@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <format>
 #include <iostream>
 #include <memory>
 #include <new>
@@ -258,9 +259,7 @@ DerefTable<TObject, TTinyPtr, STinyPtr> DerefTable<
 inline void abort_overflow(uint32_t size, uint32_t capacity) {
   const auto fill_factor = static_cast<float>(size) / static_cast<float>(
                              capacity);
-  std::cerr << "Unable to allocate new object at fill factor " << fill_factor <<
-      ". Size: " << size << ", Capacity: " << capacity << std::endl;
-  std::abort();
+  throw std::runtime_error(std::format("Unable to allocate new object at fill factor {}. Size: {}, Capacity: {}", fill_factor, size, capacity));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
