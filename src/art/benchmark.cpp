@@ -95,6 +95,7 @@ int main() {
     Timings tiny256OlcTotal;
 
     for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
+      std::cout << "Generating keys..." << std::endl;
       const auto keys = generateKeys(keyCount);
 
       std::cout << "Iteration " << iteration + 1 << '/' << iterations << ", "

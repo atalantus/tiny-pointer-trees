@@ -10,19 +10,28 @@
 
 #include "Key.h"
 
-inline std::size_t keyCount = 5'000'000;
-inline std::size_t iterations = 3;
+inline std::size_t keyCount = 50'000'000;
 inline constexpr std::size_t distribution = 3;
-inline std::vector<std::size_t> threadCounts = {
-    /*1, 2,*/ 4 /*, 8, 16, 24*/};
+inline std::size_t iterations = 10;
+inline std::vector<std::size_t> threadCounts = {1, 2, 4, 8, 16, 24};
 inline std::size_t seed = 0;
 inline const std::vector<uint64_t>* keyValues;
 
+/*
+// 5 million random (3) keys
 inline std::array<size_t, 4> tinyOlcNodeCounts = {
-    600'000, 60'000, 65'000, keyCount};
+600'000, 60'000, 65'000, keyCount};
 inline std::array<size_t, 4> tiny64OlcNodeCounts = {
-    600'000, 60'000, 38'000, keyCount};
+600'000, 60'000, 38'000, keyCount};
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {668'000, keyCount};
+*/
+
+// 50 million random (3) keys
+inline std::array<size_t, 4> tinyOlcNodeCounts = {13596942, 2977406, 65792,
+                                                  keyCount};
+inline std::array<size_t, 4> tiny64OlcNodeCounts = {17356188, 65536, 65792,
+                                                    keyCount};
+inline std::array<size_t, 2> tiny256OlcNodeCounts = {15381892, keyCount};
 
 struct BenchmarkRow {
   const char* treeName;
@@ -86,16 +95,16 @@ inline void printThroughputTable(const std::vector<BenchmarkRow>& rows) {
   constexpr int threadWidth = 10;
   constexpr int operationWidth = 24;
   std::cout << '\n'
-      << std::left << std::setw(treeWidth) << "tree" << std::right
-      << std::setw(threadWidth) << "threads" << std::setw(operationWidth)
-      << "million insert_ops/s" << std::setw(operationWidth)
-      << "million lookup_ops/s" << '\n';
+            << std::left << std::setw(treeWidth) << "tree" << std::right
+            << std::setw(threadWidth) << "threads" << std::setw(operationWidth)
+            << "million insert_ops/s" << std::setw(operationWidth)
+            << "million lookup_ops/s" << '\n';
   for (const auto& row : rows) {
     std::cout << std::left << std::setw(treeWidth) << row.treeName << std::right
-        << std::setw(threadWidth) << row.threadCount << std::fixed
-        << std::setprecision(2) << std::setw(operationWidth)
-        << row.millionInsertOperationsPerSecond
-        << std::setw(operationWidth)
-        << row.millionLookupOperationsPerSecond << '\n';
+              << std::setw(threadWidth) << row.threadCount << std::fixed
+              << std::setprecision(2) << std::setw(operationWidth)
+              << row.millionInsertOperationsPerSecond
+              << std::setw(operationWidth)
+              << row.millionLookupOperationsPerSecond << '\n';
   }
 }
