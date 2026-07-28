@@ -10,21 +10,19 @@
 
 #include "Key.h"
 
-inline std::size_t keyCount = 50'000'000;
-inline constexpr std::size_t distribution = 1;
-inline std::size_t iterations = 10;
-inline std::vector<std::size_t> threadCounts = {1, 2, 4, 8, 16, 24};
+inline std::size_t keyCount = 5'000'000;
+inline constexpr std::size_t distribution = 3;
+inline std::size_t iterations = 3;
+inline std::vector<std::size_t> threadCounts = {8 /*1, 2, 4, 8, 16, 24*/};
 inline std::size_t seed = 0;
 inline const std::vector<uint64_t>* keyValues;
 
-/*
 // 5 million random (3) keys
-inline std::array<size_t, 4> tinyOlcNodeCounts = {
-600'000, 60'000, 65'000, keyCount};
-inline std::array<size_t, 4> tiny64OlcNodeCounts = {
-600'000, 60'000, 38'000, keyCount};
+inline std::array<size_t, 4> tinyOlcNodeCounts = {600'000, 60'000, 65'000,
+                                                  keyCount};
+inline std::array<size_t, 4> tiny64OlcNodeCounts = {600'000, 60'000, 38'000,
+                                                    keyCount};
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {668'000, keyCount};
-*/
 
 /*
 // 5 million dense (1) keys
@@ -44,12 +42,14 @@ inline std::array<size_t, 4> tiny64OlcNodeCounts = {17356188, 65536, 65792,
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {15381892, keyCount};
 */
 
+/*
 // 50 million dense (1) keys
 inline std::array<size_t, 4> tinyOlcNodeCounts = {134386, 188439, 196080,
                                                   keyCount};
 inline std::array<size_t, 4> tiny64OlcNodeCounts = {195127, 195313, 196080,
                                                     keyCount};
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {196081, keyCount};
+*/
 
 struct BenchmarkRow {
   const char* treeName;

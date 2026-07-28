@@ -246,7 +246,6 @@ static void printTable(const std::vector<PerfBenchmarkRow>& rows) {
 
 int main() {
   std::vector<PerfBenchmarkRow> results;
-  results.reserve(threadCounts.size() * 2);
 
   for (const auto threadCount : threadCounts) {
     Timings olcTotal;
