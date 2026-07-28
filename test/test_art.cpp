@@ -1,5 +1,3 @@
-#include "gtest/gtest.h"
-
 #include <array>
 #include <cstdint>
 #include <string>
@@ -9,6 +7,7 @@
 #include "art/tiny_art/Tree.h"
 #include "art/tiny_art_256/Tree.h"
 #include "art/tiny_art_64/Tree.h"
+#include "gtest/gtest.h"
 
 void loadKey(TID tid, Key& key) {
   // Store the key of the tuple into the key vector
@@ -61,30 +60,31 @@ void InsertLookupTest(TArt tree) {
 
 TEST(TestArt, InsertLookup10Test) {
   InsertLookupTest<ART_OLC::Tree, 10>(ART_OLC::Tree(loadKey));
-  InsertLookupTest<TINY_ART_OLC::Tree, 10>(TINY_ART_OLC::Tree(loadKey, 10));
+  InsertLookupTest<TINY_ART_OLC::Tree, 10>(
+      TINY_ART_OLC::Tree(loadKey, 10, 10, 10, 10));
   InsertLookupTest<TINY_ART_64_OLC::Tree, 10>(
-      TINY_ART_64_OLC::Tree(loadKey, 10));
+      TINY_ART_64_OLC::Tree(loadKey, 10, 10, 10, 01));
   InsertLookupTest<TINY_ART_256_OLC::Tree, 10>(
-      TINY_ART_256_OLC::Tree(loadKey, 10));
+      TINY_ART_256_OLC::Tree(loadKey, 10, 10));
 }
 
 TEST(TestArt, InsertLookup1000000Test) {
   // InsertLookupTest<ART_OLC::Tree, 1000000>(ART_OLC::Tree(loadKey));
   InsertLookupTest<TINY_ART_OLC::Tree, 1'000'000>(
-      TINY_ART_OLC::Tree(loadKey, 1'000'000));
+      TINY_ART_OLC::Tree(loadKey, 1'000'000, 1'000'000, 1'000'000, 1'000'000));
   // InsertLookupTest<TINY_ART_64_OLC::Tree, 1000000>(
-      // TINY_ART_64_OLC::Tree(loadKey, 1000000));
+  // TINY_ART_64_OLC::Tree(loadKey, 1000000));
   // InsertLookupTest<TINY_ART_256_OLC::Tree, 1000000>(
-      // TINY_ART_256_OLC::Tree(loadKey, 1000000));
+  // TINY_ART_256_OLC::Tree(loadKey, 1000000));
 }
 
 TEST(TestArt, StringInsertLookupTest) {
   g_keyStrings.clear();
-  TINY_ART_OLC::Tree tree(loadStringKey);
+  TINY_ART_OLC::Tree tree(loadStringKey, 10, 10, 10, 10);
 
   const std::vector<std::string> words = {
-      "apple", "app", "apply", "banana", "band",
-      "bandana", "a", "hello world", "hello there"};
+      "apple",   "app", "apply",       "banana",     "band",
+      "bandana", "a",   "hello world", "hello there"};
 
   auto t = tree.getThreadInfo();
 
@@ -123,20 +123,21 @@ void InsertLookupSharedPrefixTest(TArt tree) {
 
 TEST(TestArt, SharedPrefixChildShiftTest) {
   g_numericKeys.clear();
-  const std::array<uint8_t, 17> secondBytes = {
-      128, 64, 192, 32, 224, 16, 240, 48, 208,
-      80, 176, 96, 160, 112, 144, 0, 255};
+  const std::array<uint8_t, 17> secondBytes = {128, 64,  192, 32, 224, 16,
+                                               240, 48,  208, 80, 176, 96,
+                                               160, 112, 144, 0,  255};
   for (const auto secondByte : secondBytes) {
     g_numericKeys.push_back((uint64_t{0xAA} << 56) |
                             (static_cast<uint64_t>(secondByte) << 48));
   }
 
-  InsertLookupSharedPrefixTest<ART_OLC::Tree>(
-      ART_OLC::Tree(loadNumericKey));
-  InsertLookupSharedPrefixTest<TINY_ART_OLC::Tree>(
-      TINY_ART_OLC::Tree(loadNumericKey, g_numericKeys.size()));
-  InsertLookupSharedPrefixTest<TINY_ART_64_OLC::Tree>(
-      TINY_ART_64_OLC::Tree(loadNumericKey, g_numericKeys.size()));
-  InsertLookupSharedPrefixTest<TINY_ART_256_OLC::Tree>(
-      TINY_ART_256_OLC::Tree(loadNumericKey, g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<ART_OLC::Tree>(ART_OLC::Tree(loadNumericKey));
+  InsertLookupSharedPrefixTest<TINY_ART_OLC::Tree>(TINY_ART_OLC::Tree(
+      loadNumericKey, g_numericKeys.size(), g_numericKeys.size(),
+      g_numericKeys.size(), g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<TINY_ART_64_OLC::Tree>(TINY_ART_64_OLC::Tree(
+      loadNumericKey, g_numericKeys.size(), g_numericKeys.size(),
+      g_numericKeys.size(), g_numericKeys.size()));
+  InsertLookupSharedPrefixTest<TINY_ART_256_OLC::Tree>(TINY_ART_256_OLC::Tree(
+      loadNumericKey, g_numericKeys.size(), g_numericKeys.size()));
 }
