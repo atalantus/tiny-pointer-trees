@@ -68,6 +68,7 @@ void TestDereferenceTable() {
   DerefTable deref_table(BUCKET_COUNT);
 
   ASSERT_EQ(deref_table.size(), 0);
+  ASSERT_EQ(deref_table.max_reached_size(), 0);
   ASSERT_GE(deref_table.capacity(), BUCKET_COUNT*ENTRY_COUNT);
 
   for (int i = 0; i < ENTRY_COUNT; ++i) {
@@ -108,6 +109,7 @@ void TestDereferenceTable() {
   EXPECT_THROW(deref_table.allocate({2, 2}), std::runtime_error);
 
   ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT);
+  ASSERT_EQ(deref_table.max_reached_size(), 3 * ENTRY_COUNT);
 
   // assert bins are stored consecutively in memory
   ASSERT_EQ(bin2[0].second, bin1[ENTRY_COUNT - 1].second + 1);
@@ -184,6 +186,7 @@ void TestDereferenceTable() {
   }
 
   ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT - 3 * free_count);
+  ASSERT_EQ(deref_table.max_reached_size(), 3 * ENTRY_COUNT);
 
   for (int i = 0; i < free_count; ++i) {
     deref_table.allocate({0, 1});
@@ -192,6 +195,7 @@ void TestDereferenceTable() {
   }
 
   ASSERT_EQ(deref_table.size(), 3 * ENTRY_COUNT);
+  ASSERT_EQ(deref_table.max_reached_size(), 3 * ENTRY_COUNT);
 }
 
 TEST(TestTinyPtr, DerefTable) {
@@ -206,6 +210,29 @@ TEST(TestTinyPtr, DerefTable) {
   TestDereferenceTable<uint16_t, 2>();
   TestDereferenceTable<uint16_t, 4>();
   TestDereferenceTable<uint16_t, 8>();
+}
+
+TEST(TestTinyPtr, ThreadLocalSizeSupportsCrossThreadFree) {
+  DerefTable<uint32_t> table(64);
+  std::vector<std::pair<tnyptr_t, TinyPtrHashes>> allocations;
+
+  for (uint64_t i = 0; i < 100; ++i) {
+    const TinyPtrHashes hashes{i, i + 64};
+    allocations.emplace_back(table.allocate(hashes).first, hashes);
+  }
+
+  ASSERT_EQ(table.size(), allocations.size());
+  ASSERT_EQ(table.max_reached_size(), allocations.size());
+
+  std::thread reclaimer([&] {
+    for (const auto& [tiny_ptr, hashes] : allocations) {
+      table.free(tiny_ptr, hashes);
+    }
+  });
+  reclaimer.join();
+
+  ASSERT_EQ(table.size(), 0);
+  ASSERT_EQ(table.max_reached_size(), allocations.size());
 }
 
 namespace {

@@ -13,7 +13,7 @@ bool N64::isFull() const {
 }
 
 bool N64::isUnderfull() const {
-  return count == 17;
+  return count == 12;
 }
 
 void N64::insert(uint8_t key, ArtTinyPtr n) {

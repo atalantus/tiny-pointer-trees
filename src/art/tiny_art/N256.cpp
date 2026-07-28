@@ -8,7 +8,7 @@ bool N256::isFull() const {
 }
 
 bool N256::isUnderfull() const {
-  return count == 37;
+  return count == 13;
 }
 
 void N256::insert(uint8_t key, ArtTinyPtr val) {

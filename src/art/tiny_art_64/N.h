@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstring>
 #include "Epoche.h"
+#include "art/tiny_art_common.hpp"
 #include "tiny_ptr/deref_table.h"
 
 using TID = uint64_t;
@@ -49,25 +50,6 @@ using InitialNode = N16;
 static constexpr uint32_t maxStoredPrefixLength = 11;
 
 using Prefix = uint8_t[maxStoredPrefixLength];
-
-/**
- * TODO: Check for thread-local version to avoid shared atomic 64-bit counter.
- *  Non-(fully)-unique IDs should not be a problem here.
- *
- * Generates a unique, well-distributed 64-bit id for a node.
- *
- * A splitmix64 finalizer is applied to a strictly increasing atomic counter.
- * Because splitmix64 is a bijection over the counter sequence the resulting
- * ids are guaranteed to be unique (never colliding) while still being
- * pseudo-randomly distributed across the hash space.
- */
-inline uint64_t next_node_id() {
-  static std::atomic<uint64_t> counter{0};
-  uint64_t z = (counter += 0x9E3779B97F4A7C15ULL);
-  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-  return z ^ (z >> 31);
-}
 
 class LN {
 protected:

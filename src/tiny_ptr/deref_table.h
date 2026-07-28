@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "tbb/enumerable_thread_specific.h"
 #include "tiny_ptr/sequence_lock.h"
 #include "tiny_ptr/tiny_ptr.h"
 
@@ -63,6 +64,8 @@ class DerefTable {
   //  TTinyPtrValue
   using BucketIndexT = TTinyPtrT;
 
+  using SequenceLockT = uint16_t;
+
 public:
   using TinyPtrT = TinyPtr<TTinyPtrT, STinyPtr>;
   using ObjectT = TObject;
@@ -75,24 +78,31 @@ public:
   static constexpr bool ZERO_NEW_ALLOCATED_MEMORY = false;
 
 private:
+  struct SizeCounters {
+    int64_t size = 0;
+    int64_t max_reached_size = 0;
+  };
+
   // The prime number used for the hash table. See: https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
   primes::Prime _ht_prime;
-  // The current size of the dereference table e.g., how many objects of type T are currently stored.
-  std::atomic<uint32_t> _size = 0;
-  // The maximum size that the dereference table ever reached.
-  std::atomic<uint32_t> _max_reached_size = 0;
+  // Statistic counters.
+  // Counters can be negative if a specific thread deleted more objects than he created.
+  tbb::enumerable_thread_specific<
+    SizeCounters, tbb::cache_aligned_allocator<SizeCounters>,
+    tbb::ets_key_per_instance> thread_counters;
   // The number of buckets of this dereference table. This is always a power of two for fast bucket indexing
   // (simple binary-and operation instead of modulo).
   uint32_t _num_buckets;
   // The max capacity of the dereference table e.g., how many objects of type T can be stored at most.
   uint32_t _capacity;
 
-  struct MetaTableEntry {
+  // avoid false sharing by having each entry in its own cache-line
+  // TODO: Do we really need this? Maybe pack more tightly with 8 bit sequence
+  //  lock for better cache utilization? benchmark...
+  struct alignas(64) MetaTableEntry {
+    SequenceLock<SequenceLockT> lock;
     std::atomic<BucketIndexT> free_slot_count = 0;
     std::atomic<BucketIndexT> free_slot_index = 0;
-    // TODO: What about cash line ping pong? Technically whenever a lock get unlocked the meta table entry for it will
-    //  will have changed anyway? Avoid for locking?
-    SequenceLock<uint8_t> lock;
   };
 
   struct DataTableEntry {
@@ -120,8 +130,20 @@ private:
   // object of type T or uses the first byte of its memory to store its node in the linked-free-list.
   std::vector<DataTableEntry> data_table;
 
+  void increment_size() {
+    auto& counters = thread_counters.local();
+    ++counters.size;
+    if (counters.size > counters.max_reached_size) {
+      counters.max_reached_size = counters.size;
+    }
+  }
+
+  void decrement_size() {
+    --thread_counters.local().size;
+  }
+
 public:
-  DerefTable() : _size(0), _num_buckets(0), _capacity(0) {
+  DerefTable() : _num_buckets(0), _capacity(0) {
   }
 
   explicit DerefTable(uint32_t ht_bucket_count);
@@ -132,12 +154,11 @@ public:
 
   DerefTable(DerefTable&& other) noexcept
     : _ht_prime(other._ht_prime),
-      _size(other._size.load(std::memory_order::relaxed)),
+      thread_counters(std::move(other.thread_counters)),
       _num_buckets(other._num_buckets),
       _capacity(other._capacity),
       meta_table(std::move(other.meta_table)),
       data_table(std::move(other.data_table)) {
-    other._size.store(0, std::memory_order::relaxed);
     other._num_buckets = 0;
     other._capacity = 0;
   }
@@ -153,8 +174,31 @@ public:
 
   static DerefTable Create(size_t max_capacity);
 
+  /**
+   * Returns the number of allocated objects. Call only after all concurrent
+   * allocations and frees have completed.
+   */
   [[nodiscard]] uint32_t size() const {
-    return _size.load(std::memory_order::relaxed);
+    int64_t result = 0;
+    for (const auto& counters : thread_counters) {
+      result += counters.size;
+    }
+    assert(result >= 0 && static_cast<uint64_t>(result) <= _capacity);
+    return static_cast<uint32_t>(result);
+  }
+
+  /**
+   * Returns an upper bound on the maximum number of simultaneously allocated
+   * objects. Call only after all concurrent allocations and frees have
+   * completed. It is exact while the table grows monotonically; after frees,
+   * thread-local peaks may have occurred at different times.
+   */
+  [[nodiscard]] uint64_t max_reached_size() const {
+    uint64_t result = 0;
+    for (const auto& counters : thread_counters) {
+      result += static_cast<uint64_t>(counters.max_reached_size);
+    }
+    return result;
   }
 
   [[nodiscard]] uint32_t capacity() const { return _capacity; }
@@ -223,7 +267,6 @@ template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 DerefTable<TObject, TTinyPtr, STinyPtr>::DerefTable(
     const uint32_t ht_bucket_count)
   : _ht_prime{primes::Prime::pick(ht_bucket_count)},
-    _size{0},
     _num_buckets(_ht_prime.get()),
     _capacity(_num_buckets * ENTRIES_PER_BIN_COUNT),
     meta_table(_num_buckets),
@@ -256,28 +299,23 @@ DerefTable<TObject, TTinyPtr, STinyPtr> DerefTable<
                                 ENTRIES_PER_BIN_COUNT)));
 }
 
-inline void abort_overflow(uint32_t size, uint32_t capacity) {
-  const auto fill_factor = static_cast<float>(size) / static_cast<float>(
-                             capacity);
-  throw std::runtime_error(std::format("Unable to allocate new object at fill factor {}. Size: {}, Capacity: {}", fill_factor, size, capacity));
+inline void abort_overflow(uint32_t capacity) {
+  throw std::runtime_error(std::format(
+      "Unable to allocate new object because both candidate buckets are full. "
+      "Capacity: {}", capacity));
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
 DerefTable<TObject, TTinyPtr, STinyPtr>::allocate_impl(
     const TinyPtrHashes h, const TTinyPtr special, bool zero_memory) {
-  if (_size.load(std::memory_order::relaxed) >= _capacity) {
-    abort_overflow(_size.load(std::memory_order::relaxed),
-                   _capacity);
-  }
-
   auto h1_index = _ht_prime.mod(h.first);
   auto h2_index = _ht_prime.mod(h.second);
 
   auto& h1_meta_data = meta_table[h1_index];
   auto& h2_meta_data = meta_table[h2_index];
 
-  ExclusiveLock<uint8_t> h_excl_lock;
+  ExclusiveLock<SequenceLockT> h_excl_lock;
 
 retry: {
     auto h1_opt_lock = h1_meta_data.lock.lock_optimistically();
@@ -303,10 +341,8 @@ retry: {
     // Note: for the case where h1 = h2 we have to make sure we validate the optimistic lock before upgrading
     if (!other_meta_data_lock.validate() || !h_meta_data_lock.
         try_upgrade_to_exclusive(h_excl_lock)) { goto retry; }
-
     if (h_meta_data.free_slot_count == 0) {
-      abort_overflow(_size.load(std::memory_order::relaxed),
-                     _capacity);
+      abort_overflow(_capacity);
     }
     assert(
         object_index < ENTRIES_PER_BIN_COUNT &&
@@ -318,10 +354,7 @@ retry: {
 
     h_excl_lock.unlock();
 
-    auto s = _size.fetch_add(1, std::memory_order::relaxed);
-    if (s > _max_reached_size.load()) {
-      _max_reached_size.store(s + 1);
-    }
+    increment_size();
 
     if (zero_memory) {
       memset(&object_entry, 0, sizeof(TObject));
@@ -350,7 +383,7 @@ void DerefTable<TObject, TTinyPtr, STinyPtr>::free(
 
   excl_lock.unlock();
 
-  _size.fetch_sub(1, std::memory_order::relaxed);
+  decrement_size();
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
@@ -377,11 +410,12 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
 template <typename TObject, std::unsigned_integral TTinyPtrT, unsigned STinyPtr>
 void DerefTable<TObject, TTinyPtrT, STinyPtr>::printDerefTableStats() const {
   auto s = size();
-  auto max_size = _max_reached_size.load(std::memory_order_relaxed);
-  std::cout << "Size: " << s << ", Max Size: " << max_size << ", Capacity: "
-      << capacity() << ", Fill Factor: " << static_cast<double>(s) / static_cast
-      <double>(capacity()) << ", Max Fill Factor: " << static_cast<double>(
-        max_size) / static_cast<double>(capacity()) << std::endl;
+  auto max_size = max_reached_size();
+  std::cout << "Size: " << s << ", Max Size Upper Bound: " << max_size
+      << ", Capacity: " << capacity() << ", Fill Factor: "
+      << static_cast<double>(s) / static_cast<double>(capacity())
+      << ", Max Fill Factor Upper Bound: " << static_cast<double>(max_size) /
+      static_cast<double>(capacity()) << std::endl;
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>

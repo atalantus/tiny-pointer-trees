@@ -1,6 +1,8 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "art/ARTSynchronized/OptimisticLockCoupling/Tree.h"
@@ -22,6 +24,32 @@ void stringToKey(const std::string& str, Key& key) {
 
 static std::vector<std::string> g_keyStrings;
 static std::vector<uint64_t> g_numericKeys;
+
+TEST(TestArt, NodeIdsAreDistinctAcrossThreads) {
+  constexpr size_t threadCount = 16;
+  constexpr size_t idsPerThread = 4096;
+  std::array<std::vector<uint64_t>, threadCount> ids;
+  std::array<std::thread, threadCount> threads;
+
+  for (size_t threadIndex = 0; threadIndex < threadCount; ++threadIndex) {
+    threads[threadIndex] = std::thread([&, threadIndex] {
+      ids[threadIndex].reserve(idsPerThread);
+      for (size_t i = 0; i < idsPerThread; ++i) {
+        ids[threadIndex].push_back(TINY_ART_OLC::next_node_id());
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  std::unordered_set<uint64_t> uniqueIds;
+  uniqueIds.reserve(threadCount * idsPerThread);
+  for (const auto& threadIds : ids) {
+    uniqueIds.insert(threadIds.begin(), threadIds.end());
+  }
+  EXPECT_EQ(uniqueIds.size(), threadCount * idsPerThread);
+}
 
 void loadStringKey(TID tid, Key& key) {
   stringToKey(g_keyStrings[tid - 1], key);

@@ -80,8 +80,6 @@ std::array<size_t, 257> compute_node_counts_for_depth(
  * @param sorted_words - the words sorted in alphabetical order
  * @return - an array where the i-th element is the number of nodes containing i elements/children
  */
-// TODO: Optimize? Better algorithm, remove recursion, vectorization (make array size 256 emitting leaf nodes?),
-//  parallelization, etc.?
 template <typename StringT = std::string_view>
 std::array<size_t, 257> compute_node_counts(
     const std::vector<StringT>& sorted_words) {
