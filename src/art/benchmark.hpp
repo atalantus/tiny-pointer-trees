@@ -5,24 +5,28 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <random>
 #include <vector>
 
 #include "Key.h"
 
-inline std::size_t keyCount = 5'000'000;
+inline std::size_t iterations = 10;
+inline std::size_t keyCount = 50'000'000;
 inline constexpr std::size_t distribution = 3;
-inline std::size_t iterations = 3;
-inline std::vector<std::size_t> threadCounts = {8 /*1, 2, 4, 8, 16, 24*/};
+inline std::vector<std::size_t> threadCounts = {16};
+// inline std::vector<std::size_t> threadCounts = {1, 2, 4, 8, 16, 24};
 inline std::size_t seed = 0;
 inline const std::vector<uint64_t>* keyValues;
 
+/*
 // 5 million random (3) keys
 inline std::array<size_t, 4> tinyOlcNodeCounts = {600'000, 60'000, 65'000,
                                                   keyCount};
 inline std::array<size_t, 4> tiny64OlcNodeCounts = {600'000, 60'000, 38'000,
                                                     keyCount};
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {668'000, keyCount};
+*/
 
 /*
 // 5 million dense (1) keys
@@ -33,14 +37,12 @@ inline std::array<size_t, 4> tiny64OlcNodeCounts = {19538, 19531, 19611,
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {19611, keyCount};
 */
 
-/*
 // 50 million random (3) keys
 inline std::array<size_t, 4> tinyOlcNodeCounts = {13596942, 2977406, 65792,
                                                   keyCount};
 inline std::array<size_t, 4> tiny64OlcNodeCounts = {17356188, 65536, 65792,
                                                     keyCount};
 inline std::array<size_t, 2> tiny256OlcNodeCounts = {15381892, keyCount};
-*/
 
 /*
 // 50 million dense (1) keys
@@ -74,30 +76,35 @@ inline uint64_t splitmix64(uint64_t value) {
 inline std::vector<uint64_t> generateKeys(std::size_t count) {
   std::vector<uint64_t> keys(count);
 
-  // distribution 3: actual random 8-byte integers
-  if (distribution == 3) {
-    for (std::size_t i = 0; i < count; ++i) {
-      keys[i] = splitmix64(i + ++seed);
-    }
-    return keys;
-  }
-
-  // distribution 0: sorted, dense integers
-  for (std::size_t i = 0; i < count; ++i) {
-    keys[i] = i + 1;
-  }
-
-  // distribution 1: sorted, dense integers in random order
-  if (distribution == 1) {
+  if (distribution == 0) {
+    // distribution 0: sorted, dense integers
+    std::cout << "Generating incrementing keys" << std::endl;
+    std::iota(keys.begin(), keys.end(), uint64_t{1});
+  } else if (distribution == 1) {
+    // distribution 1: sorted, dense integers in random order
+    std::cout << "Generating incrementing keys in random order" << std::endl;
+    std::iota(keys.begin(), keys.end(), uint64_t{1});
     std::shuffle(keys.begin(), keys.end(), std::mt19937_64(++seed));
   } else if (distribution == 2) {
-    // distribution 2: "pseudo-sparse" (the most-significant leaf bit gets lost)
+    std::cout << "Generating pseudo-sparse keys" << std::endl;
+    // distribution 2: "pseudo-sparse" (the most-significant leaf bit gets
+    // lost)
     constexpr auto mask = std::numeric_limits<uint64_t>::max() >> 2;
     constexpr uint64_t multiplier = 0x1f123bb5ULL;
     constexpr uint64_t offset = 0x1a2b3c4d5e6fULL;
     for (std::size_t i = 0; i < count; ++i) {
       keys[i] = (i * multiplier + offset) & mask;
     }
+  } else if (distribution == 3) {
+    // distribution 3: actual random 8-byte integers
+    std::cout << "Generating random keys" << std::endl;
+
+    for (std::size_t i = 0; i < count; ++i) {
+      keys[i] = splitmix64(i + ++seed);
+    }
+  } else {
+    std::cerr << "Unknown distribution: " << distribution << std::endl;
+    std::abort();
   }
 
   return keys;

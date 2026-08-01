@@ -9,6 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(
         -fPIC
         -fasynchronous-unwind-tables
+        -Wall
+        -Wextra
 )
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -46,7 +48,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
     endif()
 endif()
 
@@ -66,4 +68,5 @@ target_include_directories(tiny_pointer_trees PRIVATE
 add_subdirectory(src/aho_corasick)
 add_subdirectory(src/art)
 
+add_subdirectory(tools)
 add_subdirectory(test)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -15,7 +16,64 @@
 #include "tbb/enumerable_thread_specific.h"
 #include "tiny_ptr/sequence_lock.h"
 #include "tiny_ptr/tiny_ptr.h"
+
+// Bucket indexing: prime modulo (1) or power-of-two mask (0).
+// Overridable from the build system, e.g. -DUSE_PRIMES=0.
+#ifndef USE_PRIMES
+#define USE_PRIMES 1
+#endif
+
 #include "util/primes.hpp"
+
+/**
+ * Turns a hash value into a bucket index, and owns the bucket count that goes
+ * with the chosen reduction. Sole purpose is to keep the prime/power-of-two
+ * choice in one place: DerefTable holds one of these and never mentions
+ * USE_PRIMES itself.
+ *
+ * Prime modulo consumes all 64 bits of the hash; the mask consumes the low
+ * bits, which is what makes the low-bit injectivity of id_hash meaningful (see
+ * src/tiny_ptr/util.h) at the cost of rounding the table up to a power of two.
+ */
+class BucketIndexer {
+#if USE_PRIMES
+  // See:
+  // https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
+  primes::Prime _prime;
+
+ public:
+  BucketIndexer() = default;
+
+  explicit BucketIndexer(const uint32_t requested_buckets)
+      : _prime{primes::Prime::pick(requested_buckets)} {}
+
+  [[nodiscard]] uint32_t buckets() const {
+    return static_cast<uint32_t>(_prime.get());
+  }
+
+  [[nodiscard]] size_t operator()(const uint64_t hash) const {
+    return _prime.mod(hash);
+  }
+#else
+  size_t _mask = 0;
+
+ public:
+  BucketIndexer() = default;
+
+  // bit_ceil widens to uint64_t to avoid overflow UB and maps a request of 0 to
+  // a single bucket.
+  explicit BucketIndexer(const uint32_t requested_buckets)
+      : _mask(std::bit_ceil(static_cast<uint64_t>(requested_buckets)) - 1) {}
+
+  [[nodiscard]] uint32_t buckets() const {
+    return static_cast<uint32_t>(_mask + 1);
+  }
+
+  [[nodiscard]] size_t operator()(const uint64_t hash) const {
+    return hash & _mask;
+  }
+#endif
+};
 
 // TODO: These values could be a little more conservative
 //  Do some experimental testing.
@@ -43,6 +101,16 @@ consteval double load_factor(size_t bin_size) {
 }
 
 /**
+ * The smallest unsigned integer type able to hold NBits bits.
+ */
+template <unsigned NBits>
+  requires(NBits <= 64)
+using smallest_uint_t = std::conditional_t<
+    NBits <= 8, uint8_t,
+    std::conditional_t<NBits <= 16, uint16_t,
+                       std::conditional_t<NBits <= 32, uint32_t, uint64_t>>>;
+
+/**
  * @class DerefTable
  * @brief A thread-safe dereference table implementation following the
  * power-of-two-choice scheme as presented in the "Succinct and Fast Tiny
@@ -53,26 +121,31 @@ consteval double load_factor(size_t bin_size) {
 template <typename TObject, std::unsigned_integral TTinyPtrT = uint8_t,
           unsigned STinyPtr = 0>
 class DerefTable {
-  static_assert(sizeof(TObject) >= 1,
-                "DerefTable requires T to be at least 1 byte in size to store "
-                "free slot index");
   static_assert(std::is_trivially_destructible_v<TObject>,
                 "DerefTable requires trivially destructible TObject because "
                 "entries are managed as raw storage");
 
-  // TODO: Technically if we have a large STinyPtr value the maximum needed type
-  //  here might be smaller than TTinyPtrValue
-  using BucketIndexT = TTinyPtrT;
+  // The bits of a tiny pointer left for the entry index, i.e., all bits except
+  // the hash bit and the STinyPtr special bits.
+  static constexpr unsigned BUCKET_INDEX_BITS =
+      sizeof(TTinyPtrT) * 8 - 1 - STinyPtr;
 
-  using SequenceLockT = uint16_t;
+  using SequenceLockT = uint8_t;
 
  public:
+  // Entry indices only ever use BUCKET_INDEX_BITS bits, so for large STinyPtr
+  // values this can be narrower than TTinyPtrT.
+  using BucketIndexT = smallest_uint_t<BUCKET_INDEX_BITS>;
   using TinyPtrT = TinyPtr<TTinyPtrT, STinyPtr>;
   using ObjectT = TObject;
 
+  static_assert(sizeof(TObject) >= sizeof(BucketIndexT),
+                "DerefTable requires TObject to be at least as large as "
+                "BucketIndexT to store the free slot index in its storage");
+
+  // minus 1 to preserve null and tagged tinyptr
   static constexpr size_t ENTRIES_PER_BIN_COUNT =
-      (1 << (sizeof(TTinyPtrT) * 8 - STinyPtr - 1)) - 1;
-  // (minus 1 to preserve null and tagged tinyptr)
+      (size_t{1} << BUCKET_INDEX_BITS) - 1;
 
   // If newly "allocated" memory should be zeroed before it is returned.
   static constexpr bool ZERO_NEW_ALLOCATED_MEMORY = false;
@@ -83,9 +156,10 @@ class DerefTable {
     int64_t max_reached_size = 0;
   };
 
-  // The prime number used for the hash table. See:
-  // https://databasearchitects.blogspot.com/2020/01/all-hash-table-sizes-you-will-ever-need.html
-  primes::Prime _ht_prime;
+  // Maps a hash value to a bucket index. Declared before _num_buckets, which is
+  // derived from it.
+  BucketIndexer _indexer;
+
   // Statistic counters.
   // Counters can be negative if a specific thread deleted more objects than he
   // created.
@@ -102,7 +176,7 @@ class DerefTable {
   // avoid false sharing by having each entry in its own cache-line
   // TODO: Do we really need this? Maybe pack more tightly with 8 bit sequence
   //  lock for better cache utilization? benchmark...
-  struct alignas(64) MetaTableEntry {
+  struct /*alignas(64)*/ MetaTableEntry {
     SequenceLock<SequenceLockT> lock;
     std::atomic<BucketIndexT> free_slot_count = 0;
     std::atomic<BucketIndexT> free_slot_index = 0;
@@ -113,7 +187,11 @@ class DerefTable {
       alignas(TObject) std::byte bytes[sizeof(TObject)];
     };
 
-    std::array<EntryStorage, ENTRIES_PER_BIN_COUNT> entries{};
+    std::array<EntryStorage, ENTRIES_PER_BIN_COUNT> entries;
+
+    // non-default empty constructor to leave entries uninitialized until it is
+    // overwritten by the free list.
+    DataTableEntry() {}  // NOLINT(*-use-equals-default)
 
     [[nodiscard]] BucketIndexT get_next_free_slot_index(
         size_t entry_index) const {
@@ -155,7 +233,7 @@ class DerefTable {
   DerefTable& operator=(const DerefTable&) = delete;
 
   DerefTable(DerefTable&& other) noexcept
-      : _ht_prime(other._ht_prime),
+      : _indexer(other._indexer),
         thread_counters(std::move(other.thread_counters)),
         _num_buckets(other._num_buckets),
         _capacity(other._capacity),
@@ -269,8 +347,8 @@ class DerefTable {
 template <typename TObject, std::unsigned_integral TTinyPtr, unsigned STinyPtr>
 DerefTable<TObject, TTinyPtr, STinyPtr>::DerefTable(
     const uint32_t ht_bucket_count)
-    : _ht_prime{primes::Prime::pick(ht_bucket_count)},
-      _num_buckets(_ht_prime.get()),
+    : _indexer(ht_bucket_count),
+      _num_buckets(_indexer.buckets()),
       _capacity(_num_buckets * ENTRIES_PER_BIN_COUNT),
       meta_table(_num_buckets),
       data_table(_num_buckets) {
@@ -302,7 +380,13 @@ DerefTable<TObject, TTinyPtr, STinyPtr>::Create(const size_t max_capacity) {
 
 inline void abort_overflow(uint64_t size, uint32_t capacity) {
   throw std::runtime_error(std::format(
-      "Unable to allocate new object at fill factor {}. Size: {}, Capacity: {}",
+      "Unable to allocate new object at fill factor {}. Size: {}, Capacity: "
+      "{}\n"
+      "If this already throws at a low fill factor either"
+      " a) increase the tiny pointer size to have more objects per bin"
+      " b) improve the value distribution of your hash functions"
+      " c) improve the distribution of the ID that used as input for the hash "
+      "functions",
       static_cast<double>(size) / static_cast<double>(capacity), size,
       capacity));
 }
@@ -312,8 +396,8 @@ std::pair<typename DerefTable<TObject, TTinyPtr, STinyPtr>::TinyPtrT, TObject*>
 DerefTable<TObject, TTinyPtr, STinyPtr>::allocate_impl(const TinyPtrHashes h,
                                                        const TTinyPtr special,
                                                        bool zero_memory) {
-  auto h1_index = _ht_prime.mod(h.first);
-  auto h2_index = _ht_prime.mod(h.second);
+  auto h1_index = _indexer(h.first);
+  auto h2_index = _indexer(h.second);
 
   auto& h1_meta_data = meta_table[h1_index];
   auto& h2_meta_data = meta_table[h2_index];
@@ -376,7 +460,8 @@ void DerefTable<TObject, TTinyPtr, STinyPtr>::free(const TinyPtrT tinyptr,
                                                    const TinyPtrHashes h) {
   const uint64_t hash = tinyptr.hash_fn() ? h.second : h.first;
   TTinyPtr index = tinyptr.index();
-  const auto h_index = _ht_prime.mod(hash);
+
+  const auto h_index = _indexer(hash);
 
   auto& h_meta_data = meta_table[h_index];
 
@@ -412,7 +497,7 @@ const TObject* DerefTable<TObject, TTinyPtr, STinyPtr>::dereference(
   const uint64_t hash = tinyptr.hash_fn() ? h.second : h.first;
   const TTinyPtr index = tinyptr.index();
 
-  return get_data_object(_ht_prime.mod(hash), index);
+  return get_data_object(_indexer(hash), index);
 }
 
 template <typename TObject, std::unsigned_integral TTinyPtrT, unsigned STinyPtr>
