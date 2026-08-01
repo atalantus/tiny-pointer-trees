@@ -75,13 +75,13 @@ void TestDereferenceTable() {
     // assert values are linked free list
     auto val = i == ENTRY_COUNT - 1 ? 0 : i + 1;
     ASSERT_EQ(
-        *reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i,
+        *reinterpret_cast<const DerefTable::BucketIndexT *>(deref_table.dereference(TinyPtrT(i,
           0), {0, 0})), val);
     ASSERT_EQ(
-        *reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i,
+        *reinterpret_cast<const DerefTable::BucketIndexT *>(deref_table.dereference(TinyPtrT(i,
           0), {1, 1})), val);
     ASSERT_EQ(
-        *reinterpret_cast<const TTinyPtr *>(deref_table.dereference(TinyPtrT(i,
+        *reinterpret_cast<const DerefTable::BucketIndexT *>(deref_table.dereference(TinyPtrT(i,
           0), {2, 2})), val);
   }
 

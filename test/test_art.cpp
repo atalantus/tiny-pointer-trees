@@ -35,7 +35,7 @@ TEST(TestArt, NodeIdsAreDistinctAcrossThreads) {
     threads[threadIndex] = std::thread([&, threadIndex] {
       ids[threadIndex].reserve(idsPerThread);
       for (size_t i = 0; i < idsPerThread; ++i) {
-        ids[threadIndex].push_back(TINY_ART_OLC::next_node_id());
+        ids[threadIndex].push_back(next_node_id());
       }
     });
   }
